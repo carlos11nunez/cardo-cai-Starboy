@@ -8,6 +8,8 @@ env:
   # ESP32S3 Dev Module with the Waveshare settings: 16MB flash, OPI PSRAM, USB CDC on boot, 3MB app partition
   FQBN: esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB
   ESP32_URL: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+  # Pinned: ESP32 core 4.x breaks the GFX display library (as of Nov 2026). Use the same version in the Arduino IDE.
+  ESP32_CORE: esp32:esp32@3.3.13
 
 jobs:
   compile:
@@ -18,7 +20,7 @@ jobs:
       - name: Install ESP32 core and display library
         run: |
           arduino-cli core update-index --additional-urls "$ESP32_URL"
-          arduino-cli core install esp32:esp32 --additional-urls "$ESP32_URL"
+          arduino-cli core install "$ESP32_CORE" --additional-urls "$ESP32_URL"
           arduino-cli lib install "GFX Library for Arduino"
       - name: Compile sketches
         run: |
