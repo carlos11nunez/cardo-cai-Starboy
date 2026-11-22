@@ -40,7 +40,8 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [78, 92, 3,1.10, 6, 7, 0,  0,0.00,0.00,1.0],  [95, 85,0,1.03,50,50,26,  2,0.22,0.15,1.0],
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 let cur = [...LOOKS[CAT]], cycleIdx = 0, mood = CAT;
-const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7;
+const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7, SHAKE_PX = 4, DIZZY_SPEED = 4.0;
+let shakeAmp = 0;
 let lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0, tiltX = 0, tiltY = 0;
 let idleX = 0, idleY = 0, cross = 0, crossTarget = 0, lastActive = 0, nextSaccade = 0;
 let dizzyUntil = 0, nextBlink = 0, blinkStart = 0, touchStart = 0, batteryShowUntil = 0;
@@ -107,8 +108,9 @@ function drawFrame(now) {
 
   g.fillStyle = '#000'; g.fillRect(0, 0, W, W);
   const ox = (lookLX + lookRX) * 9, oy = (lookLY + lookRY) * 7;
-  drawEye(233 - 106 + ox, 225 + oy, true, lookLX, lookLY, blink, t);
-  drawEye(233 + 106 + ox, 225 + oy + RIGHT_EYE_DROP, false, lookRX, lookRY, blink, t);
+  const sx = SHAKE_PX * shakeAmp * lookLX, sy = SHAKE_PX * shakeAmp * lookLY;
+  drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, blink, t);
+  drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, blink, t);
 
   if (now < batteryShowUntil || (touching && longPressFired)) drawBattery(233, 370, batteryPct, true);
   else if (mood === LOWBAT && Math.floor(now / 600) % 2) drawBattery(233, 390, batteryPct, false);
@@ -119,11 +121,15 @@ function loop(now) {
   // mood: low battery > tap choice. Dizzy keeps the current pupil style and just spins it.
   mood = batteryPct <= 15 ? LOWBAT : TAP_CYCLE[cycleIdx];
   const dizzy = now < dizzyUntil;
+  shakeAmp = 0;
   if (dizzy) {
-    const amp = (dizzyUntil - now) / 3000, a = now / 1000 * 5;
-    tiltX = Math.cos(a) * amp; tiltY = Math.sin(a) * amp;
+    // woozy dizzy: pupils roll in a slow lazy loop (left, up, right, down), shrinking over the 3 s
+    const amp = (dizzyUntil - now) / 3000, a = now / 1000 * DIZZY_SPEED;
+    tiltX = Math.cos(a) * amp; tiltY = Math.sin(a) * amp * 0.8;
+    shakeAmp = amp;
   }
-  const tg = LOOKS[mood];
+  const tg = [...LOOKS[mood]];
+  if (dizzy) { tg[0] *= 0.9; tg[1] *= 1.15; tg[8] = 0; tg[9] = 0; } // surprised: open, taller + narrower (keeps a gap), same pupils
   cur = cur.map((v, i) => lerp(v, tg[i], 0.25));
   // idle: no mouse/touch for IDLE_MS -> eyes dart around (pointermove/pointerdown reset lastActive)
   if (touching || dizzy) lastActive = now;
@@ -137,8 +143,9 @@ function loop(now) {
     gx = idleX; gy = idleY;
   } else crossTarget = 0;
   if (crossTarget > 0) { gx *= 0.2; gy *= 0.2; }
-  lookLX = lerp(lookLX, gx, 0.22); lookLY = lerp(lookLY, gy, 0.22);
-  lookRX = lerp(lookRX, gx, 0.11); lookRY = lerp(lookRY, gy, 0.11);
+  const kl = 0.22, kr = 0.11;
+  lookLX = lerp(lookLX, gx, kl); lookLY = lerp(lookLY, gy, kl);
+  lookRX = lerp(lookRX, gx, kr); lookRY = lerp(lookRY, gy, kr);
   cross = lerp(cross, crossTarget, 0.1);
   drawFrame(now);
   requestAnimationFrame(loop);
