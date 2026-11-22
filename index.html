@@ -183,6 +183,7 @@ function loop(now) {
   if (touching && !longPressFired && now - touchStart > 1000) longPressFired = true;
   // mood: low battery > tap choice. Dizzy keeps the current pupil style and just spins it.
   mood = batteryPct <= 15 ? LOWBAT : TAP_CYCLE[cycleIdx];
+  if (mood !== STARP) bounceUntil = 0; // the bounce belongs to star mode only: switching away stops it
   const dizzy = now < dizzyUntil;
   // cartoon dizzy: pupils spin in opposite directions while the head sways; calms down over the 3 s
   let dzX = 0, dzY = 0;

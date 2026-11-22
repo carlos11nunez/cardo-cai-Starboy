@@ -363,6 +363,7 @@ void loop() {
 
   // mood: low battery > tap choice. Dizzy keeps the current pupil style and just spins it.
   mood = batteryPct <= 15 ? LOWBAT : TAP_CYCLE[cycleIdx];
+  if (mood != STARP) bounceUntil = 0;  // the bounce belongs to star mode only: switching away stops it
   bool dizzy = now < dizzyUntil;
   // cartoon dizzy: pupils spin in opposite directions while the head sways; calms down over the 3 s
   float dzX = 0, dzY = 0;
