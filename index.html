@@ -30,16 +30,15 @@
 <script>
 // Mirrors starboy.ino - keep them in sync.
 const W = 466, cv = document.getElementById('c'), g = cv.getContext('2d');
-const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, SLEEPY=4, DIZZY=5, LOWBAT=6;
-const NAMES = ['CAT','WIDE','SHOCKED','ROUND','SLEEPY','DIZZY','LOWBAT'];
+const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, SLEEPY=4, LOWBAT=5;
+const NAMES = ['CAT','WIDE','SHOCKED','ROUND','SLEEPY','LOWBAT'];
 const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [88,112,12,1.08,18,72, 0,  0,0.00,0.00,1.0],  [80,100,6,1.05,28,54, 0,  0,0.00,0.00,1.0],
   [78, 92, 3,1.10, 6, 7, 0,  0,0.00,0.00,1.0],  [95, 85,0,1.03,50,50,26,  2,0.22,0.15,1.0],
-  [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [86, 88,0,1.00,20,20, 0,  0,0.00,0.00,1.0],
-  [88, 80, 0,1.00,40,40,15, -5,0.60,0.10,0.45]];
+  [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 let cur = [...LOOKS[CAT]], cycleIdx = 0, mood = CAT;
 const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7;
 let lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0, tiltX = 0, tiltY = 0;
@@ -117,17 +116,17 @@ function drawFrame(now) {
 
 function loop(now) {
   if (touching && !longPressFired && now - touchStart > 1000) longPressFired = true;
-  if (now < dizzyUntil) {
-    mood = DIZZY;
+  // mood: low battery > tap choice. Dizzy keeps the current pupil style and just spins it.
+  mood = batteryPct <= 15 ? LOWBAT : TAP_CYCLE[cycleIdx];
+  const dizzy = now < dizzyUntil;
+  if (dizzy) {
     const amp = (dizzyUntil - now) / 3000, a = now / 1000 * 5;
     tiltX = Math.cos(a) * amp; tiltY = Math.sin(a) * amp;
   }
-  else if (batteryPct <= 15) mood = LOWBAT;
-  else mood = TAP_CYCLE[cycleIdx];
   const tg = LOOKS[mood];
   cur = cur.map((v, i) => lerp(v, tg[i], 0.25));
   // idle: no mouse/touch for IDLE_MS -> eyes dart around (pointermove/pointerdown reset lastActive)
-  if (touching || mood === DIZZY) lastActive = now;
+  if (touching || dizzy) lastActive = now;
   let gx = tiltX, gy = tiltY;
   if (now - lastActive > IDLE_MS) {
     if (now >= nextSaccade) {
