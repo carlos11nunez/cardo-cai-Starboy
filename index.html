@@ -44,7 +44,7 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
 const ANIM_EVERY_MS = 8000;
 const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_SQUINT = 2, A_SURPRISE = 3, A_HOP = 4,
       A_SHY = 5, A_LEAN = 6, A_DIZZY = 7;
-const ANIM_DUR = [1200, 1400, 2000, 1000, 900, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
+const ANIM_DUR = [2000, 1400, 2000, 1000, 900, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
 let animLean = 0;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 const BOUNCE_MS = 3500, BOUNCE_SPEED = 1100, BOUNCE_SCALE = 0.8, BOUNCE_JITTER = 0.5;
@@ -85,7 +85,7 @@ let lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0, tiltX = 0, tiltY = 0;
 let idleX = 0, idleY = 0, cross = 0, crossTarget = 0, lastActive = 0, nextSaccade = 0;
 let curiousUntil = 0, perkUntil = 0, idleTilt = 0; // idle: squint at something, perk up, curious head tilt
 let stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0; // squash & stretch on quick glances
-const EGG_TOP = 0.82, BLINK_CLOSED = 0.9; // bean-shaped eyes; blinks leave a curved closed-eye line
+const EGG_TOP = 0.82, BLINK_MS = 1000; // bean-shaped eyes; slow blink that closes to a curved line
 let dizzyUntil = 0, nextBlink = 0, blinkStart = 0, touchStart = 0, batteryShowUntil = 0;
 let touching = false, longPressFired = false, batteryPct = 80;
 
@@ -141,14 +141,20 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   else fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
   g.restore();
 
-  // a blink stops at BLINK_CLOSED so a thin curved sliver (the closed-eye outline) stays visible
-  const lid = clid < BLINK_CLOSED ? clid + (BLINK_CLOSED - clid) * blink : clid, slant = cslant * (1 - blink);
+  // a full blink hides the eye; a thin curved line is drawn in its place below
+  const lid = clid + (1 - clid) * blink, slant = cslant * (1 - blink);
   if (lid > 0.01 || slant > 0.01) {
     const top = cy - ry - 4, h = 2 * ry + 8;
     const xIn = cx + inward * (rx + 8), xOut = cx - inward * (rx + 8);
     g.fillStyle = '#000'; g.beginPath();
     g.moveTo(xOut, 0); g.lineTo(xIn, 0); g.lineTo(xIn, top + lid * h); g.lineTo(xOut, top + Math.min(1, lid + slant) * h);
     g.closePath(); g.fill();
+  }
+  if (blink > 0.85) { // closed: a thin curved line where the eye was (like the reference)
+    const a = tilt * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+    g.strokeStyle = `rgb(${col.map(c => c * b)})`; g.lineWidth = 5 * faceScale; g.lineCap = 'round'; g.beginPath();
+    for (let i = -30; i <= 30; i++) { const u = i / 30, ux = u * rx * 0.9, uy = ry * (0.3 + 0.18 * (1 - u * u)); g.lineTo(cx + ux * cs - uy * sn, cy + ux * sn + uy * cs); }
+    g.stroke();
   }
 }
 
@@ -183,7 +189,9 @@ function drawFrame(now) {
   let blink = 0;
   if (now >= nextBlink) { blinkStart = now; nextBlink = now + rand(2000, 6000); }
   const bt = now - blinkStart;
-  if (bt < 150) blink = bt < 75 ? bt / 75 : (150 - bt) / 75;
+  if (bt >= 0 && bt < BLINK_MS) { // close 30%, hold 35%, open 35%, eased
+    const q = bt / BLINK_MS, s = q < 0.3 ? q / 0.3 : (q < 0.65 ? 1 : (1 - q) / 0.35); blink = s * s * (3 - 2 * s);
+  }
   if (mood === SLEEPY || mood === LOWBAT) blink = Math.max(blink, 0.1 + 0.1 * Math.sin(t * 1.5));
 
   g.fillStyle = '#000'; g.fillRect(0, 0, W, W);

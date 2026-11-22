@@ -89,13 +89,13 @@ float idleTilt = 0;                       // idle: head tilts toward where it lo
 float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch on quick glances
 
 #define EGG_TOP 0.82f       // eye shape: top half this flat vs. the bottom (1 = plain oval)
-#define BLINK_CLOSED 0.9f   // how far a blink closes; the rest stays as a curved closed-eye line
+#define BLINK_MS 1000       // a blink: eases shut, holds, eases open (slow, like the reference)
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
 enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_HOP,
             A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {1200, 1400, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
+const uint16_t ANIM_DUR[ANIM_COUNT] = {2000, 1400, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
 float animLean = 0;  // lean -1..1
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
@@ -230,8 +230,8 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   else fillEll(pupil, pc, &eye);
 
   // top lid: black above a line from inner corner to (lower) outer corner.
-  // A blink stops at BLINK_CLOSED so a thin curved sliver (the closed-eye outline) stays visible.
-  float lid = cur.lid < BLINK_CLOSED ? cur.lid + (BLINK_CLOSED - cur.lid) * blink : cur.lid;
+  // A full blink hides the eye; a thin curved line is drawn in its place below.
+  float lid = cur.lid + (1 - cur.lid) * blink;
   float slant = cur.slant * (1 - blink);
   if (lid > 0.01f || slant > 0.01f) {
     float top = cy - ry - 4, h = 2 * ry + 8;
@@ -239,6 +239,14 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
     float yIn = top + lid * h, yOut = top + min(1.0f, lid + slant) * h;
     gfx->fillTriangle(xOut, 0, xIn, 0, xIn, yIn, BLACK);
     gfx->fillTriangle(xOut, 0, xIn, yIn, xOut, yOut, BLACK);
+  }
+  if (blink > 0.85f) {  // closed: a thin curved line where the eye was (like the reference)
+    float a = tilt * DEG_TO_RAD, cs = cosf(a), sn = sinf(a);
+    uint16_t lc = gfx->color565(e[0] * b, e[1] * b, e[2] * b);
+    for (int i = -30; i <= 30; i++) {
+      float u = i / 30.0f, ux = u * rx * 0.9f, uy = ry * (0.3f + 0.18f * (1 - u * u));
+      gfx->fillCircle(cx + ux * cs - uy * sn, cy + ux * sn + uy * cs, 2.5f * faceScale, lc);
+    }
   }
 }
 
@@ -282,7 +290,10 @@ void drawFrame(uint32_t now) {
   float blink = 0;
   if (now >= nextBlink) { blinkStart = now; nextBlink = now + random(2000, 6000); }
   uint32_t bt = now - blinkStart;
-  if (bt < 150) blink = bt < 75 ? bt / 75.0f : (150 - bt) / 75.0f;
+  if (bt < BLINK_MS) {  // close 30%, hold 35%, open 35%, eased
+    float q = bt / (float)BLINK_MS, s = q < 0.3f ? q / 0.3f : (q < 0.65f ? 1 : (1 - q) / 0.35f);
+    blink = s * s * (3 - 2 * s);
+  }
   if (mood == SLEEPY || mood == LOWBAT) blink = max(blink, 0.1f + 0.1f * sinf(t * 1.5f));
 
   gfx->fillScreen(BLACK);
