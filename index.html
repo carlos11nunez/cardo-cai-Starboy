@@ -44,7 +44,7 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
 const ANIM_EVERY_MS = 8000;
 const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_WINK = 2, A_SQUINT = 3, A_SURPRISE = 4, A_HOP = 5,
       A_LOVE = 6, A_HAPPY = 7, A_SHY = 8, A_LEAN = 9, A_DIZZY = 10;
-const ANIM_DUR = [700, 1400, 900, 2000, 1000, 900, 2500, 1500, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
+const ANIM_DUR = [1200,1400, 900, 2000, 1000, 900, 2500, 1500, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
 let animHappy = 0, animLean = 0, loveP = -1;
 let anim = A_NONE, animStart = 0, nextAnim = ANIM_EVERY_MS, animBlinkL = 0, animBlinkR = 0, animHop = 0;
 const tri = x => 1 - Math.abs(2 * x - 1); // 0 -> 1 -> 0 as x goes 0..1
@@ -197,7 +197,10 @@ function loop(now) {
   loveP = -1;
   let animGaze = false, agx = 0, agy = 0;
   switch (anim) {
-    case A_DOUBLE_BLINK: animBlinkL = animBlinkR = tri((p * 2) % 1); break;
+    case A_DOUBLE_BLINK: { // two soft eased blinks with a pause between
+      const q = p < 0.5 ? p / 0.3 : (p - 0.55) / 0.3, s = q > 0 && q < 1 ? Math.sin(Math.PI * q) : 0;
+      animBlinkL = animBlinkR = s * s;
+    } break;
     case A_EYE_ROLL: animGaze = true; agx = Math.cos(Math.PI - p * 2 * Math.PI) * 0.9; agy = -Math.sin(Math.PI - p * 2 * Math.PI) * 0.9; break;
     case A_WINK: animBlinkR = Math.min(1, tri(p) * 1.6); break;
     case A_SQUINT: animGaze = true; agx = Math.sin(p * 3 * Math.PI) * 0.8; break;
