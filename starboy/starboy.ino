@@ -57,7 +57,7 @@ const Look LOOKS[MOOD_COUNT] = {
   /*CAT     */ {88, 112, 12, 1.08f, 18, 72,  0,   0, 0.00f, 0.00f, 1.0f},   // big eyes, cat slits
   /*WIDE    */ {80, 100,  6, 1.05f, 28, 54,  0,   0, 0.00f, 0.00f, 1.0f},   // tall oval pupils
   /*SHOCKED */ {78,  92,  3, 1.10f,  6,  7,  0,   0, 0.00f, 0.00f, 1.0f},   // tiny dot pupils
-  /*ROUND   */ {95,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
+  /*ROUND   */ {88,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
   /*STARP   */ {78, 108, 14, 0.85f, 14, 60,  0,   0, 0.00f, 0.00f, 1.0f},   // left: big star pupil, right: smaller eye with cat slit
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
@@ -86,6 +86,10 @@ float idleX = 0, idleY = 0, cross = 0, crossTarget = 0;
 uint32_t lastActive = 0, nextSaccade = 0;
 uint32_t curiousUntil = 0, perkUntil = 0;  // idle: squinting at something / perked up by something
 float idleTilt = 0;                       // idle: head tilts toward where it looks, like a curious dog
+float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch on quick glances
+
+#define EGG_TOP 0.82f       // eye shape: top half this flat vs. the bottom (1 = plain oval)
+#define BLINK_CLOSED 0.9f   // how far a blink closes; the rest stays as a curved closed-eye line
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
@@ -133,19 +137,42 @@ int batteryPercent(float v) {  // rough LiPo discharge curve
 
 // ---------- drawing ----------
 // Rotated ellipse (deg = clockwise on screen), drawn as horizontal spans.
-struct Ell { float cx, cy, rx, ry, deg; };
+// topK < 1 makes a bean/egg: the top half (in the shape's own frame) is flatter than the bottom.
+struct Ell { float cx, cy, rx, ry, deg; float topK = 1; };
 
-bool spanAt(const Ell &e, int y, int &x0, int &x1) {
-  float a = e.deg * DEG_TO_RAD, cs = cosf(a), sn = sinf(a);
-  float A = cs * cs / (e.rx * e.rx) + sn * sn / (e.ry * e.ry);
-  float B = 2 * cs * sn * (1 / (e.rx * e.rx) - 1 / (e.ry * e.ry));
-  float C = sn * sn / (e.rx * e.rx) + cs * cs / (e.ry * e.ry);
-  float dy = y - e.cy;
+bool ellSpan(float cx, float cy, float rx, float ry, float deg, int y, int &x0, int &x1) {
+  float a = deg * DEG_TO_RAD, cs = cosf(a), sn = sinf(a);
+  float A = cs * cs / (rx * rx) + sn * sn / (ry * ry);
+  float B = 2 * cs * sn * (1 / (rx * rx) - 1 / (ry * ry));
+  float C = sn * sn / (rx * rx) + cs * cs / (ry * ry);
+  float dy = y - cy;
   float disc = B * B * dy * dy - 4 * A * (C * dy * dy - 1);
   if (disc < 0) return false;
   float s = sqrtf(disc);
-  x0 = lroundf(e.cx + (-B * dy - s) / (2 * A));
-  x1 = lroundf(e.cx + (-B * dy + s) / (2 * A));
+  x0 = lroundf(cx + (-B * dy - s) / (2 * A));
+  x1 = lroundf(cx + (-B * dy + s) / (2 * A));
+  return true;
+}
+
+bool spanAt(const Ell &e, int y, int &x0, int &x1) {
+  if (e.topK >= 1) return ellSpan(e.cx, e.cy, e.rx, e.ry, e.deg, y, x0, x1);
+  int t0, t1, b0, b1;
+  bool hasT = ellSpan(e.cx, e.cy, e.rx, e.ry * e.topK, e.deg, y, t0, t1);
+  bool hasB = ellSpan(e.cx, e.cy, e.rx, e.ry, e.deg, y, b0, b1);
+  float a = e.deg * DEG_TO_RAD, cs = cosf(a), sn = sinf(a), dy = y - e.cy;
+  // local v = -dx*sn + dy*cs; v < 0 is the top half. Split the row where v = 0.
+  if (fabsf(sn) < 1e-4f) {
+    if (dy * cs < 0) { if (!hasT) return false; x0 = t0; x1 = t1; }
+    else { if (!hasB) return false; x0 = b0; x1 = b1; }
+    return true;
+  }
+  int xb = lroundf(e.cx + dy * cs / sn);
+  if (sn > 0) { t0 = max(t0, xb); b1 = min(b1, xb); }
+  else { t1 = min(t1, xb); b0 = max(b0, xb); }
+  hasT = hasT && t1 >= t0; hasB = hasB && b1 >= b0;
+  if (!hasT && !hasB) return false;
+  x0 = hasT && hasB ? min(t0, b0) : (hasT ? t0 : b0);
+  x1 = hasT && hasB ? max(t1, b1) : (hasT ? t1 : b1);
   return true;
 }
 
@@ -167,14 +194,16 @@ void fillEll(const Ell &e, uint16_t c, const Ell *clip = nullptr) {
 void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, float t) {
   float k = (left ? 1.0f : cur.asym) * faceScale;
   float ph = left ? 0.0f : 2.1f;  // eyes wobble out of sync
-  float rx = cur.rx * k * (1 + WOBBLE * sinf(t * 1.3f + ph));
-  float ry = cur.ry * k * (1 + WOBBLE * sinf(t * 1.7f + ph + 1));
+  float inward = left ? 1.0f : -1.0f;  // +x toward the face's center
+  float turn = (lookLX + lookRX) * 0.5f;  // head turn: the eye on the side it looks toward gets narrower
+  float rx = cur.rx * k * (1 + WOBBLE * sinf(t * 1.3f + ph)) * (1 - 0.12f * max(0.0f, -turn * inward)) * (1 + 0.5f * stretchX - 0.5f * stretchY);  // never widens, so eyes cant touch
+  float ry = cur.ry * k * (1 + WOBBLE * sinf(t * 1.7f + ph + 1)) * (1 + stretchY - 0.5f * stretchX);
+  ry *= 1 - 0.2f * blink;  // blink squashes the eye down toward a curved line
   float prx = cur.prx * k, pry = cur.pry * k;
   float tilt = (left ? cur.tilt + 2 : -cur.tilt - 1) + headTilt;  // slightly uneven on purpose
-  float inward = left ? 1.0f : -1.0f;  // +x toward the face's center
   float b = cur.bright, pb = b * PUPIL_SHADE;
   const uint8_t *e = left ? LEFT_EYE : RIGHT_EYE;
-  Ell eye = {cx, cy, rx, ry, tilt};
+  Ell eye = {cx, cy, rx, ry, tilt, EGG_TOP};
   fillEll(eye, gfx->color565(e[0] * b, e[1] * b, e[2] * b));
 
   // pupil, clipped to the eye outline
@@ -190,7 +219,8 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float py = cy + cur.poy * k + ly * reachY;
   Ell pupil = {px, py, prx, pry, tilt};
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
-  if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
+  if (blink > 0.6f) {}  // nearly closed: only the eye's curved outline shows, no pupil
+  else if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
   else if (swirl) {  // spinning 2-turn spiral line (dense overlapping dots = a smooth stroke)
     for (int i = 0; i <= 160; i++) {
       float q = i / 160.0f, a = q * 4 * PI - t * 3;
@@ -199,8 +229,10 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   }
   else fillEll(pupil, pc, &eye);
 
-  // top lid: black above a line from inner corner to (lower) outer corner
-  float lid = cur.lid + (1 - cur.lid) * blink, slant = cur.slant * (1 - blink);
+  // top lid: black above a line from inner corner to (lower) outer corner.
+  // A blink stops at BLINK_CLOSED so a thin curved sliver (the closed-eye outline) stays visible.
+  float lid = cur.lid < BLINK_CLOSED ? cur.lid + (BLINK_CLOSED - cur.lid) * blink : cur.lid;
+  float slant = cur.slant * (1 - blink);
   if (lid > 0.01f || slant > 0.01f) {
     float top = cy - ry - 4, h = 2 * ry + 8;
     float xIn = cx + inward * (rx + 8), xOut = cx - inward * (rx + 8);
@@ -254,7 +286,7 @@ void drawFrame(uint32_t now) {
   if (mood == SLEEPY || mood == LOWBAT) blink = max(blink, 0.1f + 0.1f * sinf(t * 1.5f));
 
   gfx->fillScreen(BLACK);
-  float ox = (lookLX + lookRX) * 9, oy = (lookLY + lookRY) * 7;  // whole eyes drift with gaze
+  float ox = (lookLX + lookRX) * 16, oy = (lookLY + lookRY) * 7;  // whole face swings toward the gaze (head turn)
   // dizzy: eyes sway gently along with the pupils
   // dizzy: woozy head sway (figure-8) and tilt, no jitter
   float sx = SWAY_PX * shakeAmp * sinf(t * 2.2f), sy = SWAY_PX * 0.4f * shakeAmp * sinf(t * 4.4f);
@@ -475,6 +507,10 @@ void loop() {
   float kl = dizzy ? 0.25f : 0.22f, kr = dizzy ? 0.25f : 0.11f;  // lazy right eye trails behind (goofy)
   lookLX = lerpf(lookLX, gx, kl); lookLY = lerpf(lookLY, gy, kl);
   lookRX = lerpf(lookRX, gRX, kr); lookRY = lerpf(lookRY, gRY, kr);
+  // squash & stretch: fast glances stretch the eyes along the motion, then they settle
+  stretchX = lerpf(stretchX, min(0.18f, fabsf(lookLX - prevLX) * 3), 0.3f);
+  stretchY = lerpf(stretchY, min(0.18f, fabsf(lookLY - prevLY) * 3), 0.3f);
+  prevLX = lookLX; prevLY = lookLY;
   cross = lerpf(cross, crossTarget, 0.1f);
   bool idleNow = !dizzy && now - lastActive > IDLE_MS;
   idleTilt = lerpf(idleTilt, idleNow ? lookLX * 7 : 0, 0.1f);
