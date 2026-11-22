@@ -4,7 +4,8 @@
 //   Flash Size 16MB, PSRAM "OPI PSRAM", USB CDC On Boot "Enabled"
 // Library: "GFX Library for Arduino" (Arduino_GFX by moononournation) >= 1.5
 //
-// Controls:  tap = next eye style | hold 1 s = battery check | tilt = eyes look around | shake = dizzy
+// Controls:  tap = random animation | double tap = next eye style | hold 1 s = battery check
+//            tilt = eyes look around | shake = dizzy
 // Logic mirrors preview.html - change both together.
 
 #include <Arduino_GFX_Library.h>
@@ -91,6 +92,14 @@ const uint16_t ANIM_DUR[ANIM_COUNT] = {1200,1400, 900, 2000, 1000, 900, 2500, 15
 float animHappy = 0, animLean = 0, loveP = -1;  // happy ^ ^ amount, lean -1..1, love progress (-1 = off)
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
+// Star mode shake: eyes shrink and ricochet off the round display edge
+#define BOUNCE_MS 3500
+#define BOUNCE_SPEED 700.0f  // px/s
+float bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1;
+uint32_t bounceUntil = 0, lastFrame = 0;
+
+#define DOUBLE_TAP_MS 350   // second tap within this = double tap
+uint32_t tapAt = 0;         // time of a single tap waiting to see if a second one follows
 float animBlinkL = 0, animBlinkR = 0, animHop = 0;
 
 float tri(float x) { return 1 - fabsf(2 * x - 1); }  // 0 -> 1 -> 0 as x goes 0..1
@@ -148,7 +157,7 @@ void fillEll(const Ell &e, uint16_t c, const Ell *clip = nullptr) {
 }
 
 void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, float t) {
-  float k = left ? 1.0f : cur.asym;
+  float k = (left ? 1.0f : cur.asym) * faceScale;
   float ph = left ? 0.0f : 2.1f;  // eyes wobble out of sync
   float rx = cur.rx * k * (1 + WOBBLE * sinf(t * 1.3f + ph));
   float ry = cur.ry * k * (1 + WOBBLE * sinf(t * 1.7f + ph + 1));
@@ -162,7 +171,7 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
 
   // pupil, clipped to the eye outline
   bool star = mood == STARP && left;
-  float sr = STAR_PUPIL_R * (1 + 0.06f * sinf(t * 3));  // star pupil gently pulses
+  float sr = STAR_PUPIL_R * faceScale * (1 + 0.06f * sinf(t * 3));  // star pupil gently pulses
   // big star moves less so it stays inside the tilted oval (star isn't clipped to the eye)
   float reachX = star ? (rx - sr) * 0.5f : (rx - prx * 0.5f) * 0.6f;
   float reachY = star ? (ry - sr) * 0.5f : (ry - pry * 0.5f) * 0.6f;
@@ -256,14 +265,42 @@ void drawFrame(uint32_t now) {
   headTilt = SWAY_TILT * shakeAmp * sinf(t * 2.2f);
   sx += 22 * animLean; headTilt += 16 * animLean;  // lean animation
   oy += animHop;
-  drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, max(blink, animBlinkL), t);
-  drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, max(blink, animBlinkR), t);
+  float gap = 106 * faceScale;
+  drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
+  drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, max(blink, animBlinkR), t);
   drawDizzyStars(t);
   drawLoveHearts(t);
 
   if (now < batteryShowUntil || (touching && longPressFired)) drawBattery(233, 370, batteryPct, true);
   else if (mood == LOWBAT && (now / 600) % 2) drawBattery(233, 390, batteryPct, false);
   gfx->flush();
+}
+
+// ---------- star mode bounce ----------
+void startBounce(uint32_t now) {
+  float a = random(0, 628) / 100.0f;
+  bvx = cosf(a) * BOUNCE_SPEED; bvy = sinf(a) * BOUNCE_SPEED;
+  bounceUntil = now + BOUNCE_MS;
+}
+
+// Each eye is treated as a circle; when one hits the round display edge, the face reflects off it.
+void updateBounce(uint32_t now) {
+  float dt = min(0.05f, (now - lastFrame) / 1000.0f);
+  lastFrame = now;
+  bool on = now < bounceUntil;
+  faceScale = lerpf(faceScale, on ? 0.6f : 1.0f, 0.12f);
+  if (!on) { bx = lerpf(bx, 0, 0.1f); by = lerpf(by, 0, 0.1f); return; }
+  bx += bvx * dt; by += bvy * dt;
+  float r = 110 * faceScale;
+  for (int s = -1; s <= 1; s += 2) {
+    float ex = bx + s * 106 * faceScale, ey = by - 8;  // eye center relative to display center
+    float d = sqrtf(ex * ex + ey * ey), lim = 229 - r;
+    if (d > lim) {
+      float nx = ex / d, ny = ey / d, vn = bvx * nx + bvy * ny;
+      if (vn > 0) { bvx -= 2 * vn * nx; bvy -= 2 * vn * ny; }
+      bx -= nx * (d - lim); by -= ny * (d - lim);
+    }
+  }
 }
 
 // ---------- sensors ----------
@@ -328,7 +365,10 @@ void loop() {
   if (!t && touching) {
     touching = false;
     if (longPressFired) batteryShowUntil = now + 2000;
-    else if (now - touchStart > 40) cycleIdx = (cycleIdx + 1) % TAP_CYCLE_N;
+    else if (now - touchStart > 40) {
+      if (tapAt && now - tapAt < DOUBLE_TAP_MS) { cycleIdx = (cycleIdx + 1) % TAP_CYCLE_N; tapAt = 0; }  // double tap
+      else tapAt = now;  // single tap: plays a random animation once no second tap follows
+    }
   }
 
   // IMU: tilt = gaze, shake = dizzy
@@ -336,7 +376,10 @@ void loop() {
   if (imuRead(ax, ay, az)) {
     tiltX = clampf(ax * TILT_X_SIGN * 2.0f, -1, 1);
     tiltY = clampf(ay * TILT_Y_SIGN * 2.0f, -1, 1);
-    if (fabsf(sqrtf(ax * ax + ay * ay + az * az) - 1.0f) > 1.2f) dizzyUntil = now + 3000;
+    if (fabsf(sqrtf(ax * ax + ay * ay + az * az) - 1.0f) > 1.2f) {
+      if (mood != STARP) dizzyUntil = now + 3000;
+      else if (now >= bounceUntil) startBounce(now);  // star mode: eyes ricochet instead
+    }
   }
 
   // mood: low battery > tap choice. Dizzy keeps the current pupil style and just spins it.
@@ -353,9 +396,11 @@ void loop() {
   }
 
   // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
-  if (now >= nextAnim) {
+  bool tapAnim = tapAt && now - tapAt >= DOUBLE_TAP_MS;
+  if (tapAnim) tapAt = 0;
+  if (now >= nextAnim || tapAnim) {
     nextAnim = now + ANIM_EVERY_MS;
-    if (!dizzy && !touching && mood != LOWBAT) {
+    if (!dizzy && !touching && mood != LOWBAT && now >= bounceUntil) {
       anim = random(ANIM_COUNT); animStart = now;
       if (anim == A_DIZZY) { dizzyUntil = now + 1800; anim = A_NONE; }
     }
@@ -416,6 +461,10 @@ void loop() {
   if (crossTarget > 0) { gx *= 0.2f; gy *= 0.2f; }  // cross-eyed looks near center
 
   if (animGaze) { gx = agx; gy = agy; crossTarget = 0; }
+  if (now < bounceUntil) {  // look where they're flying
+    float sp = sqrtf(bvx * bvx + bvy * bvy);
+    gx = bvx / sp * 0.8f; gy = bvy / sp * 0.8f; crossTarget = 0;
+  }
   float gRX = gx, gRY = gy;
   if (dizzy) { gx = dzX; gy = dzY; gRX = -dzX; gRY = dzY; }  // mirrored spin
   float kl = dizzy ? 0.25f : 0.22f, kr = dizzy ? 0.25f : 0.11f;  // lazy right eye trails behind (goofy)
@@ -423,5 +472,6 @@ void loop() {
   lookRX = lerpf(lookRX, gRX, kr); lookRY = lerpf(lookRY, gRY, kr);
   cross = lerpf(cross, crossTarget, 0.1f);
 
+  updateBounce(now);
   drawFrame(now);
 }
