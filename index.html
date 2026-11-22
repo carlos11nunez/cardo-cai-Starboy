@@ -187,7 +187,7 @@ function drawBattery(cx, cy, pct, showText) {
 function drawFrame(now) {
   const t = now / 1000;
   let blink = 0;
-  if (now >= nextBlink) { blinkStart = now; nextBlink = now + rand(2000, 6000); }
+  if (now >= nextBlink) { blinkStart = now; nextBlink = now + rand(6000, 12000); } // blink every 6-12 s
   const bt = now - blinkStart;
   if (bt >= 0 && bt < BLINK_MS) { // close 30%, hold 35%, open 35%, eased
     const q = bt / BLINK_MS, s = q < 0.3 ? q / 0.3 : (q < 0.65 ? 1 : (1 - q) / 0.35); blink = s * s * (3 - 2 * s);

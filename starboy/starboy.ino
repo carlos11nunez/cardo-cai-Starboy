@@ -90,6 +90,8 @@ float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch o
 
 #define EGG_TOP 0.82f       // eye shape: top half this flat vs. the bottom (1 = plain oval)
 #define BLINK_MS 1000       // a blink: eases shut, holds, eases open (slow, like the reference)
+#define BLINK_GAP_MIN 6000  // time between blinks: random, 6-12 s
+#define BLINK_GAP_MAX 12000
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
@@ -288,7 +290,7 @@ void drawFrame(uint32_t now) {
   float t = now / 1000.0f;
   // blink: 150 ms down + up, every 2-6 s
   float blink = 0;
-  if (now >= nextBlink) { blinkStart = now; nextBlink = now + random(2000, 6000); }
+  if (now >= nextBlink) { blinkStart = now; nextBlink = now + random(BLINK_GAP_MIN, BLINK_GAP_MAX); }
   uint32_t bt = now - blinkStart;
   if (bt < BLINK_MS) {  // close 30%, hold 35%, open 35%, eased
     float q = bt / (float)BLINK_MS, s = q < 0.3f ? q / 0.3f : (q < 0.65f ? 1 : (1 - q) / 0.35f);
