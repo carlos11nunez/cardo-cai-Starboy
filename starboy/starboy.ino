@@ -87,9 +87,9 @@ uint32_t lastActive = 0, nextSaccade = 0;
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
 enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_WINK, A_SQUINT, A_SURPRISE, A_HOP,
-            A_HAPPY, A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {1200, 1400, 900, 2000, 1000, 900, 1500, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
-float animHappy = 0, animLean = 0;  // happy ^ ^ amount, lean -1..1
+            A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
+const uint16_t ANIM_DUR[ANIM_COUNT] = {1200, 1400, 900, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
+float animLean = 0;  // lean -1..1
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
 // Star mode shake: eyes shrink and ricochet off the round display edge
@@ -181,10 +181,6 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
   if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
   else fillEll(pupil, pc, &eye);
-  if (animHappy > 0.01f) {  // happy ^ ^: a black oval eats the bottom, leaving an arch
-    Ell cover = {cx, cy + ry * (2.2f - 1.6f * animHappy), rx * 1.15f, ry, tilt};
-    fillEll(cover, BLACK);
-  }
 
   // top lid: black above a line from inner corner to (lower) outer corner
   float lid = cur.lid + (1 - cur.lid) * blink, slant = cur.slant * (1 - blink);
@@ -390,7 +386,7 @@ void loop() {
   float p = anim == A_NONE ? 1 : (now - animStart) / (float)ANIM_DUR[anim];
   if (p >= 1) anim = A_NONE;
   float env = anim == A_NONE ? 0 : sinf(PI * p);  // 0 -> 1 -> 0 over the animation
-  animBlinkL = animBlinkR = animHop = animHappy = animLean = 0;
+  animBlinkL = animBlinkR = animHop = animLean = 0;
   bool animGaze = false;
   float agx = 0, agy = 0;
   switch (anim) {
@@ -403,7 +399,6 @@ void loop() {
     case A_WINK: animBlinkR = min(1.0f, tri(p) * 1.6f); break;
     case A_SQUINT: animGaze = true; agx = sinf(p * 3 * PI) * 0.8f; break;  // suspicious side-to-side glance
     case A_HOP: animHop = -fabsf(sinf(p * TWO_PI)) * 22; break;           // two little hops
-    case A_HAPPY: animHappy = env; break;                                // ^ ^ arches
     case A_SHY: animGaze = true; agx = -0.4f; agy = 0.9f; break;         // look down and away
     case A_LEAN: animLean = sinf(p * TWO_PI); break;                     // tilt and slide side to side
     default: break;
@@ -417,7 +412,6 @@ void loop() {
   }
   if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
   if (anim == A_SHY) target.lid = max(target.lid, 0.35f * env);
-  if (anim == A_HAPPY) { target.lid *= 1 - env; target.slant *= 1 - env; }  // lids open so the arch shows
   if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
   float *c = &cur.rx;
   const float *tg = &target.rx;
