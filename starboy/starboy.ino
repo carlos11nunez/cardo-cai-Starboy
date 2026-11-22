@@ -10,6 +10,30 @@
 
 #include <Arduino_GFX_Library.h>
 #include <Wire.h>
+// Colors (RGB565). Newer GFX library versions renamed their built-in names, so define our own.
+#ifndef BLACK
+#define BLACK 0x0000
+#endif
+#ifndef WHITE
+#define WHITE 0xFFFF
+#endif
+#ifndef RED
+#define RED 0xF800
+#endif
+#ifndef GREEN
+#define GREEN 0x07E0
+#endif
+#ifndef BLUE
+#define BLUE 0x001F
+#endif
+#ifndef YELLOW
+#define YELLOW 0xFFE0
+#endif
+
+// Rotated ellipse (deg = clockwise on screen), drawn as horizontal spans. Defined up here so the
+// Arduino IDE's auto-generated function declarations can see it.
+// topK < 1 makes a bean/egg: the top half (in the shape's own frame) is flatter than the bottom.
+struct Ell { float cx, cy, rx, ry, deg; float topK = 1; };
 
 // Panel IC varies by batch. If the screen stays black or looks shifted, flip this.
 #define USE_CO5300 1   // 1 = CO5300 (newer boards), 0 = SH8601
@@ -136,9 +160,6 @@ int batteryPercent(float v) {  // rough LiPo discharge curve
 }
 
 // ---------- drawing ----------
-// Rotated ellipse (deg = clockwise on screen), drawn as horizontal spans.
-// topK < 1 makes a bean/egg: the top half (in the shape's own frame) is flatter than the bottom.
-struct Ell { float cx, cy, rx, ry, deg; float topK = 1; };
 
 bool ellSpan(float cx, float cy, float rx, float ry, float deg, int y, int &x0, int &x1) {
   float a = deg * DEG_TO_RAD, cs = cosf(a), sn = sinf(a);

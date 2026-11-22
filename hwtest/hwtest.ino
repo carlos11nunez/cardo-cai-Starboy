@@ -6,6 +6,25 @@
 
 #include <Arduino_GFX_Library.h>
 #include <Wire.h>
+// Colors (RGB565). Newer GFX library versions renamed their built-in names, so define our own.
+#ifndef BLACK
+#define BLACK 0x0000
+#endif
+#ifndef WHITE
+#define WHITE 0xFFFF
+#endif
+#ifndef RED
+#define RED 0xF800
+#endif
+#ifndef GREEN
+#define GREEN 0x07E0
+#endif
+#ifndef BLUE
+#define BLUE 0x001F
+#endif
+#ifndef YELLOW
+#define YELLOW 0xFFE0
+#endif
 
 // Panel IC varies by batch. Same setting as starboy.ino - if the screen stays black, flip it.
 #define USE_CO5300 1   // 1 = CO5300 (newer boards), 0 = SH8601
