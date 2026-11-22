@@ -85,8 +85,10 @@ uint32_t lastActive = 0, nextSaccade = 0;
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
-enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_WINK, A_SQUINT, A_SURPRISE, A_HOP, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {700, 1400, 900, 2000, 1000, 900, 0};  // ms; dizzy reuses the shake effect
+enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_WINK, A_SQUINT, A_SURPRISE, A_HOP,
+            A_LOVE, A_HAPPY, A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
+const uint16_t ANIM_DUR[ANIM_COUNT] = {700, 1400, 900, 2000, 1000, 900, 2500, 1500, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
+float animHappy = 0, animLean = 0, loveP = -1;  // happy ^ ^ amount, lean -1..1, love progress (-1 = off)
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
 float animBlinkL = 0, animBlinkR = 0, animHop = 0;
@@ -170,6 +172,10 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
   if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
   else fillEll(pupil, pc, &eye);
+  if (animHappy > 0.01f) {  // happy ^ ^: a black oval eats the bottom, leaving an arch
+    Ell cover = {cx, cy + ry * (2.2f - 1.6f * animHappy), rx * 1.15f, ry, tilt};
+    fillEll(cover, BLACK);
+  }
 
   // top lid: black above a line from inner corner to (lower) outer corner
   float lid = cur.lid + (1 - cur.lid) * blink, slant = cur.slant * (1 - blink);
@@ -198,6 +204,23 @@ void drawDizzyStars(float t) {
   for (int k = 0; k < STAR_COUNT; k++) {
     float b = t * 3 + k * TWO_PI / STAR_COUNT, depth = (sinf(b) + 1) / 2;  // front of orbit = bigger
     drawStar(233 + 120 * cosf(b), 92 + 20 * sinf(b), (8 + 7 * depth) * fade, t * 5 + k, gfx->color565(255, 220, 60));
+  }
+}
+
+void drawHeart(float x, float y, float s, uint16_t c) {
+  gfx->fillCircle(x - s * 0.5f, y, s * 0.55f, c);
+  gfx->fillCircle(x + s * 0.5f, y, s * 0.55f, c);
+  gfx->fillTriangle(x - s * 1.03f, y + s * 0.2f, x + s * 1.03f, y + s * 0.2f, x, y + s * 1.4f, c);
+}
+
+// love: little hearts float up from the eyes, staggered
+void drawLoveHearts(float t) {
+  if (loveP < 0) return;
+  for (int i = 0; i < 6; i++) {
+    float q = loveP * 1.6f - i * 0.12f;
+    if (q <= 0 || q >= 1) continue;
+    float x = 233 + (i % 2 ? 1 : -1) * (70 + 25 * (i % 3)) + 10 * sinf(t * 5 + i);
+    drawHeart(x, 290 - q * 230, 13 * (1 - q * 0.5f), gfx->color565(235, 50, 70));
   }
 }
 
@@ -231,10 +254,12 @@ void drawFrame(uint32_t now) {
   // dizzy: woozy head sway (figure-8) and tilt, no jitter
   float sx = SWAY_PX * shakeAmp * sinf(t * 2.2f), sy = SWAY_PX * 0.4f * shakeAmp * sinf(t * 4.4f);
   headTilt = SWAY_TILT * shakeAmp * sinf(t * 2.2f);
+  sx += 22 * animLean; headTilt += 16 * animLean;  // lean animation
   oy += animHop;
   drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, max(blink, animBlinkL), t);
   drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, max(blink, animBlinkR), t);
   drawDizzyStars(t);
+  drawLoveHearts(t);
 
   if (now < batteryShowUntil || (touching && longPressFired)) drawBattery(233, 370, batteryPct, true);
   else if (mood == LOWBAT && (now / 600) % 2) drawBattery(233, 390, batteryPct, false);
@@ -338,7 +363,8 @@ void loop() {
   float p = anim == A_NONE ? 1 : (now - animStart) / (float)ANIM_DUR[anim];
   if (p >= 1) anim = A_NONE;
   float env = anim == A_NONE ? 0 : sinf(PI * p);  // 0 -> 1 -> 0 over the animation
-  animBlinkL = animBlinkR = animHop = 0;
+  animBlinkL = animBlinkR = animHop = animHappy = animLean = 0;
+  loveP = -1;
   bool animGaze = false;
   float agx = 0, agy = 0;
   switch (anim) {
@@ -347,6 +373,10 @@ void loop() {
     case A_WINK: animBlinkR = min(1.0f, tri(p) * 1.6f); break;
     case A_SQUINT: animGaze = true; agx = sinf(p * 3 * PI) * 0.8f; break;  // suspicious side-to-side glance
     case A_HOP: animHop = -fabsf(sinf(p * TWO_PI)) * 22; break;           // two little hops
+    case A_LOVE: loveP = p; break;                                        // hearts float up
+    case A_HAPPY: animHappy = env; break;                                // ^ ^ arches
+    case A_SHY: animGaze = true; agx = -0.4f; agy = 0.9f; break;         // look down and away
+    case A_LEAN: animLean = sinf(p * TWO_PI); break;                     // tilt and slide side to side
     default: break;
   }
 
@@ -357,6 +387,9 @@ void loop() {
     target.lid = 0; target.slant = 0;
   }
   if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
+  if (anim == A_SHY) target.lid = max(target.lid, 0.35f * env);
+  if (anim == A_LOVE) target.lid = max(target.lid, 0.15f * env);
+  if (anim == A_HAPPY) { target.lid *= 1 - env; target.slant *= 1 - env; }  // lids open so the arch shows
   if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
   float *c = &cur.rx;
   const float *tg = &target.rx;
