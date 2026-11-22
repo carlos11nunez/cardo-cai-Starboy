@@ -100,6 +100,11 @@ uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
 float bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1;
 uint32_t bounceUntil = 0, lastFrame = 0;
 
+// After a dizzy spell or a star-mode bounce ends on its own, the eyes glare angrily for a bit
+#define ANGRY_MS 2500
+uint32_t angryUntil = 0;
+bool wasDizzy = false, wasBouncing = false;
+
 float animBlinkL = 0, animBlinkR = 0, animHop = 0;
 
 float tri(float x) { return 1 - fabsf(2 * x - 1); }  // 0 -> 1 -> 0 as x goes 0..1
@@ -365,6 +370,9 @@ void loop() {
   mood = batteryPct <= 15 ? LOWBAT : TAP_CYCLE[cycleIdx];
   if (mood != STARP) bounceUntil = 0;  // the bounce belongs to star mode only: switching away stops it
   bool dizzy = now < dizzyUntil;
+  bool bouncing = now < bounceUntil;
+  if ((wasDizzy && !dizzy) || (wasBouncing && !bouncing && mood == STARP)) angryUntil = now + ANGRY_MS;  // mode switch cancels quietly
+  wasDizzy = dizzy; wasBouncing = bouncing;
   // cartoon dizzy: pupils spin in opposite directions while the head sways; calms down over the 3 s
   float dzX = 0, dzY = 0;
   shakeAmp = 0;
@@ -378,7 +386,7 @@ void loop() {
   // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
   if (now >= nextAnim) {
     nextAnim = now + ANIM_EVERY_MS;
-    if (!dizzy && !touching && mood != LOWBAT && now >= bounceUntil) {
+    if (!dizzy && !touching && mood != LOWBAT && now >= bounceUntil && now >= angryUntil) {
       anim = random(ANIM_COUNT); animStart = now;
       if (anim == A_DIZZY) { dizzyUntil = now + 1800; anim = A_NONE; }
     }
@@ -413,6 +421,7 @@ void loop() {
   if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
   if (anim == A_SHY) target.lid = max(target.lid, 0.35f * env);
   if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
+  if (now < angryUntil) { target.lid = max(target.lid, 0.35f); target.slant = -0.3f; }  // angry: lids slant down toward the middle
   float *c = &cur.rx;
   const float *tg = &target.rx;
   for (int i = 0; i < N_FIELDS; i++) c[i] = lerpf(c[i], tg[i], 0.25f);

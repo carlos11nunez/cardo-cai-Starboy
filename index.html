@@ -49,6 +49,9 @@ let animLean = 0;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 const BOUNCE_MS = 3500, BOUNCE_SPEED = 1100, BOUNCE_SCALE = 0.8, BOUNCE_JITTER = 0.5;
 let bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1, bounceUntil = 0, lastFrame = 0;
+// After a dizzy spell or a star-mode bounce ends on its own, the eyes glare angrily for a bit
+const ANGRY_MS = 2500;
+let angryUntil = 0, wasDizzy = false, wasBouncing = false;
 function startBounce(now) {
   const a = Math.random() * Math.PI * 2;
   bvx = Math.cos(a) * BOUNCE_SPEED; bvy = Math.sin(a) * BOUNCE_SPEED; bounceUntil = now + BOUNCE_MS;
@@ -185,6 +188,9 @@ function loop(now) {
   mood = batteryPct <= 15 ? LOWBAT : TAP_CYCLE[cycleIdx];
   if (mood !== STARP) bounceUntil = 0; // the bounce belongs to star mode only: switching away stops it
   const dizzy = now < dizzyUntil;
+  const bouncing = now < bounceUntil;
+  if ((wasDizzy && !dizzy) || (wasBouncing && !bouncing && mood === STARP)) angryUntil = now + ANGRY_MS; // mode switch cancels quietly
+  wasDizzy = dizzy; wasBouncing = bouncing;
   // cartoon dizzy: pupils spin in opposite directions while the head sways; calms down over the 3 s
   let dzX = 0, dzY = 0;
   shakeAmp = 0;
@@ -196,7 +202,7 @@ function loop(now) {
   // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
   if (now >= nextAnim) {
     nextAnim = now + ANIM_EVERY_MS;
-    if (!dizzy && !touching && mood !== LOWBAT && now >= bounceUntil) {
+    if (!dizzy && !touching && mood !== LOWBAT && now >= bounceUntil && now >= angryUntil) {
       anim = Math.floor(Math.random() * ANIM_DUR.length); animStart = now;
       if (anim === A_DIZZY) { dizzyUntil = now + 1800; anim = A_NONE; }
     }
@@ -224,6 +230,7 @@ function loop(now) {
   if (anim === A_SQUINT) tg[8] = Math.max(tg[8], 0.45 * env);
   if (anim === A_SHY) tg[8] = Math.max(tg[8], 0.35 * env);
   if (anim === A_SURPRISE) { tg[1] *= 1 + 0.25 * env; tg[8] *= 1 - env; tg[9] *= 1 - env; }
+  if (now < angryUntil) { tg[8] = Math.max(tg[8], 0.35); tg[9] = -0.3; } // angry: lids slant down toward the middle
   cur = cur.map((v, i) => lerp(v, tg[i], 0.25));
   // idle: no mouse/touch for IDLE_MS -> eyes dart around (pointermove/pointerdown reset lastActive)
   if (touching || dizzy) lastActive = now;
