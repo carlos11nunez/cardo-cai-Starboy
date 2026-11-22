@@ -57,7 +57,7 @@ const Look LOOKS[MOOD_COUNT] = {
   /*WIDE    */ {80, 100,  6, 1.05f, 28, 54,  0,   0, 0.00f, 0.00f, 1.0f},   // tall oval pupils
   /*SHOCKED */ {78,  92,  3, 1.10f,  6,  7,  0,   0, 0.00f, 0.00f, 1.0f},   // tiny dot pupils
   /*ROUND   */ {95,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
-  /*STARP   */ {86,  88,  0, 1.05f, 30, 30,  0,   0, 0.00f, 0.00f, 1.0f},   // left eye gets a star pupil
+  /*STARP   */ {86,  88,  6, 0.92f, 14, 60,  0,   0, 0.00f, 0.00f, 1.0f},   // left: big star pupil, right: smaller eye with cat slit
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
 };
@@ -74,6 +74,7 @@ Mood mood = CAT;
 #define SWAY_TILT 10        // dizzy: how far the eyes tilt with the sway, degrees
 #define DIZZY_SPEED 7.0f    // dizzy: pupil spin speed (radians/s)
 #define STAR_COUNT 3        // dizzy: stars circling above the eyes
+#define STAR_PUPIL_R 56     // star mode: star pupil size (px), much bigger than the other pupil
 
 float shakeAmp = 0, headTilt = 0;  // dizzy strength 0..1, current sway tilt
 
@@ -158,11 +159,15 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   fillEll(eye, gfx->color565(e[0] * b, e[1] * b, e[2] * b));
 
   // pupil, clipped to the eye outline
-  float px = cx + inward * (cur.pox * k + cross * rx * 0.35f) + lx * (rx - prx * 0.5f) * 0.6f;
-  float py = cy + cur.poy * k + ly * (ry - pry * 0.5f) * 0.6f;
+  bool star = mood == STARP && left;
+  float sr = STAR_PUPIL_R * (1 + 0.06f * sinf(t * 3));  // star pupil gently pulses
+  float reachX = star ? (rx - sr) * 0.9f : (rx - prx * 0.5f) * 0.6f;  // big star moves less so it stays inside
+  float reachY = star ? (ry - sr) * 0.9f : (ry - pry * 0.5f) * 0.6f;
+  float px = cx + inward * (cur.pox * k + cross * rx * 0.35f) + lx * reachX;
+  float py = cy + cur.poy * k + ly * reachY;
   Ell pupil = {px, py, prx, pry, tilt};
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
-  if (mood == STARP && left) drawStar(px, py, prx * 1.25f, t * 0.8f, pc);  // slowly turning star pupil
+  if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
   else fillEll(pupil, pc, &eye);
 
   // top lid: black above a line from inner corner to (lower) outer corner

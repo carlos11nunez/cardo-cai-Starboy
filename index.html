@@ -38,7 +38,7 @@ const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [88,112,12,1.08,18,72, 0,  0,0.00,0.00,1.0],  [80,100,6,1.05,28,54, 0,  0,0.00,0.00,1.0],
   [78, 92, 3,1.10, 6, 7, 0,  0,0.00,0.00,1.0],  [95, 85,0,1.03,50,50,26,  2,0.22,0.15,1.0],
-  [86, 88, 0,1.05,30,30, 0,  0,0.00,0.00,1.0],  // STARP: left eye gets a star pupil
+  [86, 88, 6,0.92,14,60, 0,  0,0.00,0.00,1.0],  // STARP: left big star pupil, right smaller eye with cat slit
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 8000;
@@ -47,7 +47,7 @@ const ANIM_DUR = [700, 1400, 900, 2000, 1000, 900, 0]; // ms; dizzy reuses the s
 let anim = A_NONE, animStart = 0, nextAnim = ANIM_EVERY_MS, animBlinkL = 0, animBlinkR = 0, animHop = 0;
 const tri = x => 1 - Math.abs(2 * x - 1); // 0 -> 1 -> 0 as x goes 0..1
 let cur = [...LOOKS[CAT]], cycleIdx = 0, mood = CAT;
-const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7, SWAY_PX = 12, SWAY_TILT = 10, DIZZY_SPEED = 7.0, STAR_COUNT = 3;
+const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7, SWAY_PX = 12, SWAY_TILT = 10, DIZZY_SPEED = 7.0, STAR_COUNT = 3, STAR_PUPIL_R = 56;
 let shakeAmp = 0, headTilt = 0;
 let lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0, tiltX = 0, tiltY = 0;
 let idleX = 0, idleY = 0, cross = 0, crossTarget = 0, lastActive = 0, nextSaccade = 0;
@@ -81,10 +81,13 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   fillRotEllipse(cx, cy, rx, ry, tilt, col, b);
 
   // pupil, clipped to the eye outline
-  const px = cx + inward * (pox * k + cross * rx * 0.35) + lx * (rx - prx * 0.5) * 0.6;
-  const py = cy + poy * k + ly * (ry - pry * 0.5) * 0.6;
+  const star = mood === STARP && left;
+  const sr = STAR_PUPIL_R * (1 + 0.06 * Math.sin(t * 3));
+  const reachX = star ? (rx - sr) * 0.9 : (rx - prx * 0.5) * 0.6, reachY = star ? (ry - sr) * 0.9 : (ry - pry * 0.5) * 0.6;
+  const px = cx + inward * (pox * k + cross * rx * 0.35) + lx * reachX;
+  const py = cy + poy * k + ly * reachY;
   g.save(); g.beginPath(); g.ellipse(cx, cy, rx, ry, tilt * Math.PI / 180, 0, Math.PI * 2); g.clip();
-  if (mood === STARP && left) drawStar(px, py, prx * 1.25, t * 0.8, `rgb(${col.map(c => c * b * PUPIL_SHADE)})`);
+  if (star) drawStar(px, py, sr, 0.3 + 0.45 * Math.sin(t * 1.3), `rgb(${col.map(c => c * b * PUPIL_SHADE)})`);
   else fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
   g.restore();
 
