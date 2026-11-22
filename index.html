@@ -42,9 +42,9 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 8000;
-const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_WINK = 2, A_SQUINT = 3, A_SURPRISE = 4, A_HOP = 5,
-      A_SHY = 6, A_LEAN = 7, A_DIZZY = 8;
-const ANIM_DUR = [1200, 1400, 900, 2000, 1000, 900, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
+const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_SQUINT = 2, A_SURPRISE = 3, A_HOP = 4,
+      A_SHY = 5, A_LEAN = 6, A_DIZZY = 7;
+const ANIM_DUR = [1200, 1400, 2000, 1000, 900, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
 let animLean = 0;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 const BOUNCE_MS = 3500, BOUNCE_SPEED = 1100, BOUNCE_SCALE = 0.8, BOUNCE_JITTER = 0.5;
@@ -227,7 +227,6 @@ function loop(now) {
       animBlinkL = animBlinkR = s * s;
     } break;
     case A_EYE_ROLL: animGaze = true; agx = Math.cos(Math.PI - p * 2 * Math.PI) * 0.9; agy = -Math.sin(Math.PI - p * 2 * Math.PI) * 0.9; break;
-    case A_WINK: animBlinkR = Math.min(1, tri(p) * 1.6); break;
     case A_SQUINT: animGaze = true; agx = Math.sin(p * 3 * Math.PI) * 0.8; break;
     case A_HOP: animHop = -Math.abs(Math.sin(p * 2 * Math.PI)) * 22; break;
     case A_SHY: animGaze = true; agx = -0.4; agy = 0.9; break;

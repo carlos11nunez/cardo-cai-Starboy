@@ -89,9 +89,9 @@ float idleTilt = 0;                       // idle: head tilts toward where it lo
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
-enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_WINK, A_SQUINT, A_SURPRISE, A_HOP,
+enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_HOP,
             A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {1200, 1400, 900, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
+const uint16_t ANIM_DUR[ANIM_COUNT] = {1200, 1400, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
 float animLean = 0;  // lean -1..1
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
@@ -417,7 +417,6 @@ void loop() {
       animBlinkL = animBlinkR = s * s;
     } break;
     case A_EYE_ROLL: animGaze = true; agx = cosf(PI - p * TWO_PI) * 0.9f; agy = -sinf(PI - p * TWO_PI) * 0.9f; break;
-    case A_WINK: animBlinkR = min(1.0f, tri(p) * 1.6f); break;
     case A_SQUINT: animGaze = true; agx = sinf(p * 3 * PI) * 0.8f; break;  // suspicious side-to-side glance
     case A_HOP: animHop = -fabsf(sinf(p * TWO_PI)) * 22; break;           // two little hops
     case A_SHY: animGaze = true; agx = -0.4f; agy = 0.9f; break;         // look down and away
