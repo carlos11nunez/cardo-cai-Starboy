@@ -101,7 +101,7 @@ float bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1;
 uint32_t bounceUntil = 0, lastFrame = 0;
 
 // After a dizzy spell or a star-mode bounce ends on its own, the eyes glare angrily for a bit
-#define ANGRY_MS 2500
+#define ANGRY_MS 1000
 uint32_t angryUntil = 0;
 bool wasDizzy = false, wasBouncing = false;
 
@@ -421,7 +421,13 @@ void loop() {
   if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
   if (anim == A_SHY) target.lid = max(target.lid, 0.35f * env);
   if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
-  if (now < angryUntil) { target.lid = max(target.lid, 0.35f); target.slant = -0.3f; }  // angry: lids slant down toward the middle
+  if (now < angryUntil) {  // angry: lids slant down toward the middle; eases in fast, out smoothly; pupils untouched
+    float ap = 1 - (angryUntil - now) / (float)ANGRY_MS;
+    float w = min(1.0f, min(ap / 0.2f, (1 - ap) / 0.4f));
+    w = w * w * (3 - 2 * w);
+    target.lid = lerpf(target.lid, max(target.lid, 0.35f), w);
+    target.slant = lerpf(target.slant, -0.3f, w);
+  }
   float *c = &cur.rx;
   const float *tg = &target.rx;
   for (int i = 0; i < N_FIELDS; i++) c[i] = lerpf(c[i], tg[i], 0.25f);
