@@ -47,7 +47,7 @@ const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_WINK = 2, A_SQUINT = 3,
 const ANIM_DUR = [1200, 1400, 900, 2000, 1000, 900, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
 let animLean = 0;
 // Star mode shake: eyes shrink and ricochet off the round display edge
-const BOUNCE_MS = 3500, BOUNCE_SPEED = 700;
+const BOUNCE_MS = 3500, BOUNCE_SPEED = 1100, BOUNCE_SCALE = 0.8, BOUNCE_JITTER = 0.5;
 let bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1, bounceUntil = 0, lastFrame = 0;
 function startBounce(now) {
   const a = Math.random() * Math.PI * 2;
@@ -56,7 +56,7 @@ function startBounce(now) {
 function updateBounce(now) {
   const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
   const on = now < bounceUntil;
-  faceScale = lerp(faceScale, on ? 0.6 : 1, 0.12);
+  faceScale = lerp(faceScale, on ? BOUNCE_SCALE : 1, 0.12);
   if (!on) { bx = lerp(bx, 0, 0.1); by = lerp(by, 0, 0.1); return; }
   bx += bvx * dt; by += bvy * dt;
   const r = 110 * faceScale;
@@ -64,7 +64,11 @@ function updateBounce(now) {
     const ex = bx + s * 106 * faceScale, ey = by - 8, d = Math.hypot(ex, ey), lim = 229 - r;
     if (d > lim) {
       const nx = ex / d, ny = ey / d, vn = bvx * nx + bvy * ny;
-      if (vn > 0) { bvx -= 2 * vn * nx; bvy -= 2 * vn * ny; }
+      if (vn > 0) {
+        bvx -= 2 * vn * nx; bvy -= 2 * vn * ny;
+        const j = rand(-BOUNCE_JITTER, BOUNCE_JITTER), c = Math.cos(j), sn = Math.sin(j); // chaotic deflection
+        const vx = bvx * c - bvy * sn; bvy = bvx * sn + bvy * c; bvx = vx;
+      }
       bx -= nx * (d - lim); by -= ny * (d - lim);
     }
   }

@@ -94,7 +94,9 @@ int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 #define BOUNCE_MS 3500
-#define BOUNCE_SPEED 700.0f  // px/s
+#define BOUNCE_SPEED 1100.0f // px/s
+#define BOUNCE_SCALE 0.8f    // eye size while bouncing
+#define BOUNCE_JITTER 0.5f   // max random deflection per wall hit, radians
 float bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1;
 uint32_t bounceUntil = 0, lastFrame = 0;
 
@@ -264,7 +266,7 @@ void updateBounce(uint32_t now) {
   float dt = min(0.05f, (now - lastFrame) / 1000.0f);
   lastFrame = now;
   bool on = now < bounceUntil;
-  faceScale = lerpf(faceScale, on ? 0.6f : 1.0f, 0.12f);
+  faceScale = lerpf(faceScale, on ? BOUNCE_SCALE : 1.0f, 0.12f);
   if (!on) { bx = lerpf(bx, 0, 0.1f); by = lerpf(by, 0, 0.1f); return; }
   bx += bvx * dt; by += bvy * dt;
   float r = 110 * faceScale;
@@ -273,7 +275,11 @@ void updateBounce(uint32_t now) {
     float d = sqrtf(ex * ex + ey * ey), lim = 229 - r;
     if (d > lim) {
       float nx = ex / d, ny = ey / d, vn = bvx * nx + bvy * ny;
-      if (vn > 0) { bvx -= 2 * vn * nx; bvy -= 2 * vn * ny; }
+      if (vn > 0) {
+        bvx -= 2 * vn * nx; bvy -= 2 * vn * ny;
+        float j = random(-100, 101) / 100.0f * BOUNCE_JITTER, c = cosf(j), sn = sinf(j);  // chaotic deflection
+        float vx = bvx * c - bvy * sn; bvy = bvx * sn + bvy * c; bvx = vx;
+      }
       bx -= nx * (d - lim); by -= ny * (d - lim);
     }
   }
