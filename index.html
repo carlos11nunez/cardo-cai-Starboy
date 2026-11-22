@@ -43,9 +43,9 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 8000;
 const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_WINK = 2, A_SQUINT = 3, A_SURPRISE = 4, A_HOP = 5,
-      A_LOVE = 6, A_HAPPY = 7, A_SHY = 8, A_LEAN = 9, A_DIZZY = 10;
-const ANIM_DUR = [1200,1400, 900, 2000, 1000, 900, 2500, 1500, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
-let animHappy = 0, animLean = 0, loveP = -1;
+      A_HAPPY = 6, A_SHY = 7, A_LEAN = 8, A_DIZZY = 9;
+const ANIM_DUR = [1200, 1400, 900, 2000, 1000, 900, 1500, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
+let animHappy = 0, animLean = 0;
 const DOUBLE_TAP_MS = 350;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 const BOUNCE_MS = 3500, BOUNCE_SPEED = 700;
@@ -147,22 +147,6 @@ function drawDizzyStars(t) {
   }
 }
 
-function drawHeart(x, y, s, color) {
-  g.fillStyle = color; g.beginPath();
-  g.arc(x - s * 0.5, y, s * 0.55, 0, Math.PI * 2); g.arc(x + s * 0.5, y, s * 0.55, 0, Math.PI * 2); g.fill();
-  g.beginPath(); g.moveTo(x - s * 1.03, y + s * 0.2); g.lineTo(x + s * 1.03, y + s * 0.2); g.lineTo(x, y + s * 1.4); g.fill();
-}
-
-function drawLoveHearts(t) {
-  if (loveP < 0) return;
-  for (let i = 0; i < 6; i++) {
-    const q = loveP * 1.6 - i * 0.12;
-    if (q <= 0 || q >= 1) continue;
-    const x = 233 + (i % 2 ? 1 : -1) * (70 + 25 * (i % 3)) + 10 * Math.sin(t * 5 + i);
-    drawHeart(x, 290 - q * 230, 13 * (1 - q * 0.5), 'rgb(235,50,70)');
-  }
-}
-
 function drawBattery(cx, cy, pct, showText) {
   const c = pct <= 15 ? '#f00' : pct <= 40 ? '#ff0' : '#0f0';
   g.strokeStyle = '#fff'; g.lineWidth = 1; g.beginPath(); g.roundRect(cx-40, cy-18, 76, 36, 6); g.stroke();
@@ -189,7 +173,6 @@ function drawFrame(now) {
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
   drawDizzyStars(t);
-  drawLoveHearts(t);
 
   if (now < batteryShowUntil || (touching && longPressFired)) drawBattery(233, 370, batteryPct, true);
   else if (mood === LOWBAT && Math.floor(now / 600) % 2) drawBattery(233, 390, batteryPct, false);
@@ -222,7 +205,6 @@ function loop(now) {
   if (p >= 1) anim = A_NONE;
   const env = anim === A_NONE ? 0 : Math.sin(Math.PI * p);
   animBlinkL = animBlinkR = animHop = animHappy = animLean = 0;
-  loveP = -1;
   let animGaze = false, agx = 0, agy = 0;
   switch (anim) {
     case A_DOUBLE_BLINK: { // two soft eased blinks with a pause between
@@ -233,7 +215,6 @@ function loop(now) {
     case A_WINK: animBlinkR = Math.min(1, tri(p) * 1.6); break;
     case A_SQUINT: animGaze = true; agx = Math.sin(p * 3 * Math.PI) * 0.8; break;
     case A_HOP: animHop = -Math.abs(Math.sin(p * 2 * Math.PI)) * 22; break;
-    case A_LOVE: loveP = p; break;
     case A_HAPPY: animHappy = env; break;
     case A_SHY: animGaze = true; agx = -0.4; agy = 0.9; break;
     case A_LEAN: animLean = Math.sin(p * 2 * Math.PI); break;
@@ -243,7 +224,6 @@ function loop(now) {
   if (dizzy) { tg[0] *= 0.9; tg[1] *= 1.15; tg[8] = 0; tg[9] = 0; } // surprised: open, taller + narrower (keeps a gap), same pupils
   if (anim === A_SQUINT) tg[8] = Math.max(tg[8], 0.45 * env);
   if (anim === A_SHY) tg[8] = Math.max(tg[8], 0.35 * env);
-  if (anim === A_LOVE) tg[8] = Math.max(tg[8], 0.15 * env);
   if (anim === A_HAPPY) { tg[8] *= 1 - env; tg[9] *= 1 - env; } // lids open so the arch shows
   if (anim === A_SURPRISE) { tg[1] *= 1 + 0.25 * env; tg[8] *= 1 - env; tg[9] *= 1 - env; }
   cur = cur.map((v, i) => lerp(v, tg[i], 0.25));
