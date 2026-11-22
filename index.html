@@ -46,7 +46,6 @@ const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_WINK = 2, A_SQUINT = 3,
       A_SHY = 6, A_LEAN = 7, A_DIZZY = 8;
 const ANIM_DUR = [1200, 1400, 900, 2000, 1000, 900, 1800, 1600, 0]; // ms; dizzy reuses the shake effect
 let animLean = 0;
-const DOUBLE_TAP_MS = 350;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 const BOUNCE_MS = 3500, BOUNCE_SPEED = 700;
 let bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1, bounceUntil = 0, lastFrame = 0;
@@ -70,7 +69,6 @@ function updateBounce(now) {
     }
   }
 }
-let tapAt = 0;
 let anim = A_NONE, animStart = 0, nextAnim = ANIM_EVERY_MS, animBlinkL = 0, animBlinkR = 0, animHop = 0;
 const tri = x => 1 - Math.abs(2 * x - 1); // 0 -> 1 -> 0 as x goes 0..1
 let cur = [...LOOKS[CAT]], cycleIdx = 0, mood = CAT;
@@ -191,9 +189,7 @@ function loop(now) {
     shakeAmp = amp;
   }
   // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
-  const tapAnim = tapAt && now - tapAt >= DOUBLE_TAP_MS;
-  if (tapAnim) tapAt = 0;
-  if (now >= nextAnim || tapAnim) {
+  if (now >= nextAnim) {
     nextAnim = now + ANIM_EVERY_MS;
     if (!dizzy && !touching && mood !== LOWBAT && now >= bounceUntil) {
       anim = Math.floor(Math.random() * ANIM_DUR.length); animStart = now;
@@ -262,11 +258,7 @@ window.addEventListener('pointerup', () => {
   if (!touching) return;
   touching = false;
   if (longPressFired) batteryShowUntil = performance.now() + 2000;
-  else {
-    const now = performance.now();
-    if (tapAt && now - tapAt < DOUBLE_TAP_MS) { cycleIdx = (cycleIdx + 1) % TAP_CYCLE.length; tapAt = 0; } // double tap
-    else tapAt = now; // single tap: random animation once no second tap follows
-  }
+  else cycleIdx = (cycleIdx + 1) % TAP_CYCLE.length;
 });
 document.getElementById('shake').onclick = () => {
   const now = performance.now();

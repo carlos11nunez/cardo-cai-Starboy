@@ -4,7 +4,7 @@
 //   Flash Size 16MB, PSRAM "OPI PSRAM", USB CDC On Boot "Enabled"
 // Library: "GFX Library for Arduino" (Arduino_GFX by moononournation) >= 1.5
 //
-// Controls:  tap = random animation | double tap = next eye style | hold 1 s = battery check
+// Controls:  tap = next eye style | hold 1 s = battery check | animations play on their own every 8 s
 //            tilt = eyes look around | shake = dizzy
 // Logic mirrors preview.html - change both together.
 
@@ -98,8 +98,6 @@ uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
 float bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1;
 uint32_t bounceUntil = 0, lastFrame = 0;
 
-#define DOUBLE_TAP_MS 350   // second tap within this = double tap
-uint32_t tapAt = 0;         // time of a single tap waiting to see if a second one follows
 float animBlinkL = 0, animBlinkR = 0, animHop = 0;
 
 float tri(float x) { return 1 - fabsf(2 * x - 1); }  // 0 -> 1 -> 0 as x goes 0..1
@@ -343,10 +341,7 @@ void loop() {
   if (!t && touching) {
     touching = false;
     if (longPressFired) batteryShowUntil = now + 2000;
-    else if (now - touchStart > 40) {
-      if (tapAt && now - tapAt < DOUBLE_TAP_MS) { cycleIdx = (cycleIdx + 1) % TAP_CYCLE_N; tapAt = 0; }  // double tap
-      else tapAt = now;  // single tap: plays a random animation once no second tap follows
-    }
+    else if (now - touchStart > 40) cycleIdx = (cycleIdx + 1) % TAP_CYCLE_N;
   }
 
   // IMU: tilt = gaze, shake = dizzy
@@ -374,9 +369,7 @@ void loop() {
   }
 
   // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
-  bool tapAnim = tapAt && now - tapAt >= DOUBLE_TAP_MS;
-  if (tapAnim) tapAt = 0;
-  if (now >= nextAnim || tapAnim) {
+  if (now >= nextAnim) {
     nextAnim = now + ANIM_EVERY_MS;
     if (!dizzy && !touching && mood != LOWBAT && now >= bounceUntil) {
       anim = random(ANIM_COUNT); animStart = now;
