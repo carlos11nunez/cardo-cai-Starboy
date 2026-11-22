@@ -79,10 +79,11 @@ function updateBounce(now) {
 let anim = A_NONE, animStart = 0, nextAnim = ANIM_EVERY_MS, animBlinkL = 0, animBlinkR = 0, animHop = 0;
 const tri = x => 1 - Math.abs(2 * x - 1); // 0 -> 1 -> 0 as x goes 0..1
 let cur = [...LOOKS[CAT]], cycleIdx = 0, mood = CAT;
-const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7, SWAY_PX = 12, SWAY_TILT = 10, DIZZY_SPEED = 7.0, STAR_COUNT = 3, STAR_PUPIL_R = 56;
+const IDLE_MS = 1500, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7, SWAY_PX = 12, SWAY_TILT = 10, DIZZY_SPEED = 7.0, STAR_COUNT = 3, STAR_PUPIL_R = 56, SWIRL_R = 42;
 let shakeAmp = 0, headTilt = 0;
 let lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0, tiltX = 0, tiltY = 0;
 let idleX = 0, idleY = 0, cross = 0, crossTarget = 0, lastActive = 0, nextSaccade = 0;
+let curiousUntil = 0, perkUntil = 0, idleTilt = 0; // idle: squint at something, perk up, curious head tilt
 let dizzyUntil = 0, nextBlink = 0, blinkStart = 0, touchStart = 0, batteryShowUntil = 0;
 let touching = false, longPressFired = false, batteryPct = 80;
 
@@ -115,11 +116,18 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   // pupil, clipped to the eye outline
   const star = mood === STARP && left;
   const sr = STAR_PUPIL_R * faceScale * (1 + 0.06 * Math.sin(t * 3));
-  const reachX = star ? (rx - sr) * 0.5 : (rx - prx * 0.5) * 0.6, reachY = star ? (ry - sr) * 0.5 : (ry - pry * 0.5) * 0.6;
+  const swirl = mood === STARP && !left, sw = SWIRL_R * faceScale, big = star ? sr : sw;
+  const reachX = (star || swirl) ? (rx - big) * 0.5 : (rx - prx * 0.5) * 0.6, reachY = (star || swirl) ? (ry - big) * 0.5 : (ry - pry * 0.5) * 0.6;
   const px = cx + inward * (pox * k + cross * rx * 0.35) + lx * reachX;
   const py = cy + poy * k + ly * reachY;
   g.save(); g.beginPath(); g.ellipse(cx, cy, rx, ry, tilt * Math.PI / 180, 0, Math.PI * 2); g.clip();
   if (star) drawStar(px, py, sr, 0.3 + 0.45 * Math.sin(t * 1.3), `rgb(${col.map(c => c * b * PUPIL_SHADE)})`);
+  else if (swirl) { // spinning 2-turn spiral line
+    g.strokeStyle = `rgb(${col.map(c => c * b * PUPIL_SHADE)})`; g.lineWidth = 7 * faceScale; g.lineCap = g.lineJoin = 'round';
+    g.beginPath();
+    for (let i = 0; i <= 80; i++) { const q = i / 80, a = q * 4 * Math.PI - t * 3; g.lineTo(px + q * sw * Math.cos(a), py + q * sw * Math.sin(a)); }
+    g.stroke();
+  }
   else fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
   g.restore();
 
@@ -173,6 +181,7 @@ function drawFrame(now) {
   const sy = SWAY_PX * 0.4 * shakeAmp * Math.sin(t * 4.4);
   headTilt = SWAY_TILT * shakeAmp * Math.sin(t * 2.2);
   sx += 22 * animLean; headTilt += 16 * animLean; // lean animation
+  headTilt += idleTilt;
   const gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
@@ -230,6 +239,8 @@ function loop(now) {
   if (anim === A_SQUINT) tg[8] = Math.max(tg[8], 0.45 * env);
   if (anim === A_SHY) tg[8] = Math.max(tg[8], 0.35 * env);
   if (anim === A_SURPRISE) { tg[1] *= 1 + 0.25 * env; tg[8] *= 1 - env; tg[9] *= 1 - env; }
+  if (now < curiousUntil) tg[8] = Math.max(tg[8], 0.18); // squint to focus on something
+  if (now < perkUntil) tg[1] *= 1.08;                     // perk up: something caught its eye
   if (now < angryUntil) { // angry: lids slant down toward the middle; eases in fast, out smoothly; pupils untouched
     const ap = 1 - (angryUntil - now) / ANGRY_MS;
     let w = Math.min(1, ap / 0.2, (1 - ap) / 0.4); w = w * w * (3 - 2 * w);
@@ -243,7 +254,10 @@ function loop(now) {
     if (now >= nextSaccade) {
       idleX = rand(-0.8, 0.8); idleY = rand(-0.6, 0.6);
       crossTarget = Math.random() * 100 < CROSS_CHANCE ? 1 : 0;
-      nextSaccade = now + rand(600, 2500);
+      nextSaccade = now + rand(350, 1500); // quick, busy glances
+      const roll = Math.random() * 100;
+      if (roll < 25) { idleX = rand(-1, 1); idleY = rand(-0.8, 0.8); curiousUntil = now + 700; } // peer hard at something
+      else if (roll < 40) perkUntil = now + 450;
     }
     gx = idleX; gy = idleY;
   } else crossTarget = 0;
@@ -256,6 +270,8 @@ function loop(now) {
   lookLX = lerp(lookLX, gx, kl); lookLY = lerp(lookLY, gy, kl);
   lookRX = lerp(lookRX, gRX, kr); lookRY = lerp(lookRY, gRY, kr);
   cross = lerp(cross, crossTarget, 0.1);
+  const idleNow = !dizzy && now - lastActive > IDLE_MS;
+  idleTilt = lerp(idleTilt, idleNow ? lookLX * 7 : 0, 0.1);
   updateBounce(now);
   drawFrame(now);
   requestAnimationFrame(loop);

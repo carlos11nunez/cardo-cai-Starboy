@@ -67,7 +67,7 @@ Look cur = LOOKS[CAT];
 int cycleIdx = 0;
 Mood mood = CAT;
 // Personality
-#define IDLE_MS 3000        // no tilt/touch for this long = eyes wander on their own
+#define IDLE_MS 1500        // no tilt/touch for this long = eyes start looking around on their own
 #define WOBBLE 0.03f        // wabi-sabi: each eye slowly breathes out of sync (0 = off)
 #define CROSS_CHANCE 15     // % of idle glances that go goofy cross-eyed
 #define RIGHT_EYE_DROP 7    // px, right eye sits a bit lower
@@ -76,6 +76,7 @@ Mood mood = CAT;
 #define DIZZY_SPEED 7.0f    // dizzy: pupil spin speed (radians/s)
 #define STAR_COUNT 3        // dizzy: stars circling above the eyes
 #define STAR_PUPIL_R 56     // star mode: star pupil size (px), much bigger than the other pupil
+#define SWIRL_R 42          // star mode: swirl pupil size (px) in the other eye
 
 float shakeAmp = 0, headTilt = 0;  // dizzy strength 0..1, current sway tilt
 
@@ -83,6 +84,8 @@ float lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0;  // per-eye gaze -1..1; ri
 float tiltX = 0, tiltY = 0, prevTiltX = 0, prevTiltY = 0;  // from IMU
 float idleX = 0, idleY = 0, cross = 0, crossTarget = 0;
 uint32_t lastActive = 0, nextSaccade = 0;
+uint32_t curiousUntil = 0, perkUntil = 0;  // idle: squinting at something / perked up by something
+float idleTilt = 0;                       // idle: head tilts toward where it looks, like a curious dog
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
@@ -177,14 +180,23 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   // pupil, clipped to the eye outline
   bool star = mood == STARP && left;
   float sr = STAR_PUPIL_R * faceScale * (1 + 0.06f * sinf(t * 3));  // star pupil gently pulses
+  bool swirl = mood == STARP && !left;
+  float sw = SWIRL_R * faceScale;
+  float big = star ? sr : sw;  // star and swirl move less so they stay inside the eye
   // big star moves less so it stays inside the tilted oval (star isn't clipped to the eye)
-  float reachX = star ? (rx - sr) * 0.5f : (rx - prx * 0.5f) * 0.6f;
-  float reachY = star ? (ry - sr) * 0.5f : (ry - pry * 0.5f) * 0.6f;
+  float reachX = (star || swirl) ? (rx - big) * 0.5f : (rx - prx * 0.5f) * 0.6f;
+  float reachY = (star || swirl) ? (ry - big) * 0.5f : (ry - pry * 0.5f) * 0.6f;
   float px = cx + inward * (cur.pox * k + cross * rx * 0.35f) + lx * reachX;
   float py = cy + cur.poy * k + ly * reachY;
   Ell pupil = {px, py, prx, pry, tilt};
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
   if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
+  else if (swirl) {  // spinning 2-turn spiral line (dense overlapping dots = a smooth stroke)
+    for (int i = 0; i <= 160; i++) {
+      float q = i / 160.0f, a = q * 4 * PI - t * 3;
+      gfx->fillCircle(px + q * sw * cosf(a), py + q * sw * sinf(a), 3.5f * faceScale, pc);
+    }
+  }
   else fillEll(pupil, pc, &eye);
 
   // top lid: black above a line from inner corner to (lower) outer corner
@@ -248,6 +260,7 @@ void drawFrame(uint32_t now) {
   float sx = SWAY_PX * shakeAmp * sinf(t * 2.2f), sy = SWAY_PX * 0.4f * shakeAmp * sinf(t * 4.4f);
   headTilt = SWAY_TILT * shakeAmp * sinf(t * 2.2f);
   sx += 22 * animLean; headTilt += 16 * animLean;  // lean animation
+  headTilt += idleTilt;
   oy += animHop;
   float gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
@@ -421,6 +434,8 @@ void loop() {
   if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
   if (anim == A_SHY) target.lid = max(target.lid, 0.35f * env);
   if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
+  if (now < curiousUntil) target.lid = max(target.lid, 0.18f);  // squint to focus on something
+  if (now < perkUntil) target.ry *= 1.08f;                       // perk up: something caught its eye
   if (now < angryUntil) {  // angry: lids slant down toward the middle; eases in fast, out smoothly; pupils untouched
     float ap = 1 - (angryUntil - now) / (float)ANGRY_MS;
     float w = min(1.0f, min(ap / 0.2f, (1 - ap) / 0.4f));
@@ -442,7 +457,10 @@ void loop() {
       idleX = random(-80, 81) / 100.0f;
       idleY = random(-60, 61) / 100.0f;
       crossTarget = random(100) < CROSS_CHANCE ? 1 : 0;
-      nextSaccade = now + random(600, 2500);
+      nextSaccade = now + random(350, 1500);  // quick, busy glances
+      long roll = random(100);
+      if (roll < 25) { idleX = random(-100, 101) / 100.0f; idleY = random(-80, 81) / 100.0f; curiousUntil = now + 700; }  // peer hard at something
+      else if (roll < 40) perkUntil = now + 450;
     }
     gx = idleX; gy = idleY;
   } else crossTarget = 0;
@@ -459,6 +477,8 @@ void loop() {
   lookLX = lerpf(lookLX, gx, kl); lookLY = lerpf(lookLY, gy, kl);
   lookRX = lerpf(lookRX, gRX, kr); lookRY = lerpf(lookRY, gRY, kr);
   cross = lerpf(cross, crossTarget, 0.1f);
+  bool idleNow = !dizzy && now - lastActive > IDLE_MS;
+  idleTilt = lerpf(idleTilt, idleNow ? lookLX * 7 : 0, 0.1f);
 
   updateBounce(now);
   drawFrame(now);
