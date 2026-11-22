@@ -57,7 +57,7 @@ const Look LOOKS[MOOD_COUNT] = {
   /*WIDE    */ {80, 100,  6, 1.05f, 28, 54,  0,   0, 0.00f, 0.00f, 1.0f},   // tall oval pupils
   /*SHOCKED */ {78,  92,  3, 1.10f,  6,  7,  0,   0, 0.00f, 0.00f, 1.0f},   // tiny dot pupils
   /*ROUND   */ {95,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
-  /*STARP   */ {86,  88,  6, 0.92f, 14, 60,  0,   0, 0.00f, 0.00f, 1.0f},   // left: big star pupil, right: smaller eye with cat slit
+  /*STARP   */ {78, 108, 14, 0.85f, 14, 60,  0,   0, 0.00f, 0.00f, 1.0f},   // left: big star pupil, right: smaller eye with cat slit
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
 };
@@ -161,8 +161,9 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   // pupil, clipped to the eye outline
   bool star = mood == STARP && left;
   float sr = STAR_PUPIL_R * (1 + 0.06f * sinf(t * 3));  // star pupil gently pulses
-  float reachX = star ? (rx - sr) * 0.9f : (rx - prx * 0.5f) * 0.6f;  // big star moves less so it stays inside
-  float reachY = star ? (ry - sr) * 0.9f : (ry - pry * 0.5f) * 0.6f;
+  // big star moves less so it stays inside the tilted oval (star isn't clipped to the eye)
+  float reachX = star ? (rx - sr) * 0.5f : (rx - prx * 0.5f) * 0.6f;
+  float reachY = star ? (ry - sr) * 0.5f : (ry - pry * 0.5f) * 0.6f;
   float px = cx + inward * (cur.pox * k + cross * rx * 0.35f) + lx * reachX;
   float py = cy + cur.poy * k + ly * reachY;
   Ell pupil = {px, py, prx, pry, tilt};
