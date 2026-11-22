@@ -44,9 +44,9 @@ Arduino_GFX *panel = new Arduino_SH8601(bus, LCD_RST, 0, W, W);
 Arduino_Canvas *gfx = new Arduino_Canvas(W, W, panel);  // full-frame buffer (PSRAM) = no flicker
 
 // ---------- moods ----------
-enum Mood { CAT, WIDE, SHOCKED, ROUND, SLEEPY, LOWBAT, MOOD_COUNT };
-const Mood TAP_CYCLE[] = { CAT, WIDE, SHOCKED, ROUND };
-const int TAP_CYCLE_N = 4;
+enum Mood { CAT, WIDE, SHOCKED, ROUND, STARP, SLEEPY, LOWBAT, MOOD_COUNT };
+const Mood TAP_CYCLE[] = { CAT, WIDE, SHOCKED, ROUND, STARP };
+const int TAP_CYCLE_N = 5;
 
 // eye rx/ry, tilt (deg, mirrored per eye), asym (right eye scale), pupil rx/ry,
 // pupil rest offset pox (toward center) / poy (down), lid (0..1 covered), slant (outer lid lower), brightness
@@ -57,6 +57,7 @@ const Look LOOKS[MOOD_COUNT] = {
   /*WIDE    */ {80, 100,  6, 1.05f, 28, 54,  0,   0, 0.00f, 0.00f, 1.0f},   // tall oval pupils
   /*SHOCKED */ {78,  92,  3, 1.10f,  6,  7,  0,   0, 0.00f, 0.00f, 1.0f},   // tiny dot pupils
   /*ROUND   */ {95,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
+  /*STARP   */ {86,  88,  0, 1.05f, 30, 30,  0,   0, 0.00f, 0.00f, 1.0f},   // left eye gets a star pupil
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
 };
@@ -80,6 +81,16 @@ float lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0;  // per-eye gaze -1..1; ri
 float tiltX = 0, tiltY = 0, prevTiltX = 0, prevTiltY = 0;  // from IMU
 float idleX = 0, idleY = 0, cross = 0, crossTarget = 0;
 uint32_t lastActive = 0, nextSaccade = 0;
+
+// Random animations: one every ANIM_EVERY_MS, idle look-around in between
+#define ANIM_EVERY_MS 8000
+enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_WINK, A_SQUINT, A_SURPRISE, A_HOP, A_DIZZY, ANIM_COUNT };
+const uint16_t ANIM_DUR[ANIM_COUNT] = {700, 1400, 900, 2000, 1000, 900, 0};  // ms; dizzy reuses the shake effect
+int anim = A_NONE;
+uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
+float animBlinkL = 0, animBlinkR = 0, animHop = 0;
+
+float tri(float x) { return 1 - fabsf(2 * x - 1); }  // 0 -> 1 -> 0 as x goes 0..1
 uint32_t dizzyUntil = 0, nextBlink = 0, blinkStart = 0;
 uint32_t touchStart = 0, batteryShowUntil = 0;
 bool touching = false, longPressFired = false;
@@ -150,7 +161,9 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float px = cx + inward * (cur.pox * k + cross * rx * 0.35f) + lx * (rx - prx * 0.5f) * 0.6f;
   float py = cy + cur.poy * k + ly * (ry - pry * 0.5f) * 0.6f;
   Ell pupil = {px, py, prx, pry, tilt};
-  fillEll(pupil, gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb), &eye);
+  uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
+  if (mood == STARP && left) drawStar(px, py, prx * 1.25f, t * 0.8f, pc);  // slowly turning star pupil
+  else fillEll(pupil, pc, &eye);
 
   // top lid: black above a line from inner corner to (lower) outer corner
   float lid = cur.lid + (1 - cur.lid) * blink, slant = cur.slant * (1 - blink);
@@ -212,8 +225,9 @@ void drawFrame(uint32_t now) {
   // dizzy: woozy head sway (figure-8) and tilt, no jitter
   float sx = SWAY_PX * shakeAmp * sinf(t * 2.2f), sy = SWAY_PX * 0.4f * shakeAmp * sinf(t * 4.4f);
   headTilt = SWAY_TILT * shakeAmp * sinf(t * 2.2f);
-  drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, blink, t);
-  drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, blink, t);
+  oy += animHop;
+  drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, max(blink, animBlinkL), t);
+  drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, max(blink, animBlinkR), t);
   drawDizzyStars(t);
 
   if (now < batteryShowUntil || (touching && longPressFired)) drawBattery(233, 370, batteryPct, true);
@@ -307,12 +321,37 @@ void loop() {
     shakeAmp = amp;
   }
 
+  // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
+  if (now >= nextAnim) {
+    nextAnim = now + ANIM_EVERY_MS;
+    if (!dizzy && !touching && mood != LOWBAT) {
+      anim = random(ANIM_COUNT); animStart = now;
+      if (anim == A_DIZZY) { dizzyUntil = now + 1800; anim = A_NONE; }
+    }
+  }
+  float p = anim == A_NONE ? 1 : (now - animStart) / (float)ANIM_DUR[anim];
+  if (p >= 1) anim = A_NONE;
+  float env = anim == A_NONE ? 0 : sinf(PI * p);  // 0 -> 1 -> 0 over the animation
+  animBlinkL = animBlinkR = animHop = 0;
+  bool animGaze = false;
+  float agx = 0, agy = 0;
+  switch (anim) {
+    case A_DOUBLE_BLINK: animBlinkL = animBlinkR = tri(fmodf(p * 2, 1)); break;
+    case A_EYE_ROLL: animGaze = true; agx = cosf(PI - p * TWO_PI) * 0.9f; agy = -sinf(PI - p * TWO_PI) * 0.9f; break;
+    case A_WINK: animBlinkR = min(1.0f, tri(p) * 1.6f); break;
+    case A_SQUINT: animGaze = true; agx = sinf(p * 3 * PI) * 0.8f; break;  // suspicious side-to-side glance
+    case A_HOP: animHop = -fabsf(sinf(p * TWO_PI)) * 22; break;           // two little hops
+    default: break;
+  }
+
   // smooth every field of the look toward the target (Look is all floats)
   Look target = LOOKS[mood];
   if (dizzy) {  // surprised: eyes pop open, taller and narrower (keeps a gap between them), pupils unchanged
     target.rx *= 0.9f; target.ry *= 1.15f;
     target.lid = 0; target.slant = 0;
   }
+  if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
+  if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
   float *c = &cur.rx;
   const float *tg = &target.rx;
   for (int i = 0; i < N_FIELDS; i++) c[i] = lerpf(c[i], tg[i], 0.25f);
@@ -333,6 +372,7 @@ void loop() {
   } else crossTarget = 0;
   if (crossTarget > 0) { gx *= 0.2f; gy *= 0.2f; }  // cross-eyed looks near center
 
+  if (animGaze) { gx = agx; gy = agy; crossTarget = 0; }
   float gRX = gx, gRY = gy;
   if (dizzy) { gx = dzX; gy = dzY; gRX = -dzX; gRY = dzY; }  // mirrored spin
   float kl = dizzy ? 0.25f : 0.22f, kr = dizzy ? 0.25f : 0.11f;  // lazy right eye trails behind (goofy)

@@ -30,15 +30,22 @@
 <script>
 // Mirrors starboy.ino - keep them in sync.
 const W = 466, cv = document.getElementById('c'), g = cv.getContext('2d');
-const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, SLEEPY=4, LOWBAT=5;
-const NAMES = ['CAT','WIDE','SHOCKED','ROUND','SLEEPY','LOWBAT'];
-const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND];
+const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, SLEEPY=5, LOWBAT=6;
+const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','SLEEPY','LOWBAT'];
+const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [88,112,12,1.08,18,72, 0,  0,0.00,0.00,1.0],  [80,100,6,1.05,28,54, 0,  0,0.00,0.00,1.0],
   [78, 92, 3,1.10, 6, 7, 0,  0,0.00,0.00,1.0],  [95, 85,0,1.03,50,50,26,  2,0.22,0.15,1.0],
+  [86, 88, 0,1.05,30,30, 0,  0,0.00,0.00,1.0],  // STARP: left eye gets a star pupil
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
+// Random animations: one every ANIM_EVERY_MS, idle look-around in between
+const ANIM_EVERY_MS = 8000;
+const A_NONE = -1, A_DOUBLE_BLINK = 0, A_EYE_ROLL = 1, A_WINK = 2, A_SQUINT = 3, A_SURPRISE = 4, A_HOP = 5, A_DIZZY = 6;
+const ANIM_DUR = [700, 1400, 900, 2000, 1000, 900, 0]; // ms; dizzy reuses the shake effect
+let anim = A_NONE, animStart = 0, nextAnim = ANIM_EVERY_MS, animBlinkL = 0, animBlinkR = 0, animHop = 0;
+const tri = x => 1 - Math.abs(2 * x - 1); // 0 -> 1 -> 0 as x goes 0..1
 let cur = [...LOOKS[CAT]], cycleIdx = 0, mood = CAT;
 const IDLE_MS = 3000, WOBBLE = 0.03, CROSS_CHANCE = 15, RIGHT_EYE_DROP = 7, SWAY_PX = 12, SWAY_TILT = 10, DIZZY_SPEED = 7.0, STAR_COUNT = 3;
 let shakeAmp = 0, headTilt = 0;
@@ -77,7 +84,8 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const px = cx + inward * (pox * k + cross * rx * 0.35) + lx * (rx - prx * 0.5) * 0.6;
   const py = cy + poy * k + ly * (ry - pry * 0.5) * 0.6;
   g.save(); g.beginPath(); g.ellipse(cx, cy, rx, ry, tilt * Math.PI / 180, 0, Math.PI * 2); g.clip();
-  fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
+  if (mood === STARP && left) drawStar(px, py, prx * 1.25, t * 0.8, `rgb(${col.map(c => c * b * PUPIL_SHADE)})`);
+  else fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
   g.restore();
 
   const lid = clid + (1 - clid) * blink, slant = cslant * (1 - blink);
@@ -125,11 +133,11 @@ function drawFrame(now) {
   if (mood === SLEEPY || mood === LOWBAT) blink = Math.max(blink, 0.1 + 0.1 * Math.sin(t * 1.5));
 
   g.fillStyle = '#000'; g.fillRect(0, 0, W, W);
-  const ox = (lookLX + lookRX) * 9, oy = (lookLY + lookRY) * 7;
+  const ox = (lookLX + lookRX) * 9, oy = (lookLY + lookRY) * 7 + animHop;
   const sx = SWAY_PX * shakeAmp * Math.sin(t * 2.2), sy = SWAY_PX * 0.4 * shakeAmp * Math.sin(t * 4.4);
   headTilt = SWAY_TILT * shakeAmp * Math.sin(t * 2.2);
-  drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, blink, t);
-  drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, blink, t);
+  drawEye(233 - 106 + ox + sx, 225 + oy + sy, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
+  drawEye(233 + 106 + ox + sx, 225 + oy + RIGHT_EYE_DROP + sy, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
   drawDizzyStars(t);
 
   if (now < batteryShowUntil || (touching && longPressFired)) drawBattery(233, 370, batteryPct, true);
@@ -149,8 +157,31 @@ function loop(now) {
     dzX = Math.cos(a) * amp; dzY = Math.sin(a) * amp;
     shakeAmp = amp;
   }
+  // random animation every ANIM_EVERY_MS (skipped while dizzy, touched or low on battery)
+  if (now >= nextAnim) {
+    nextAnim = now + ANIM_EVERY_MS;
+    if (!dizzy && !touching && mood !== LOWBAT) {
+      anim = Math.floor(Math.random() * ANIM_DUR.length); animStart = now;
+      if (anim === A_DIZZY) { dizzyUntil = now + 1800; anim = A_NONE; }
+    }
+  }
+  const p = anim === A_NONE ? 1 : (now - animStart) / ANIM_DUR[anim];
+  if (p >= 1) anim = A_NONE;
+  const env = anim === A_NONE ? 0 : Math.sin(Math.PI * p);
+  animBlinkL = animBlinkR = animHop = 0;
+  let animGaze = false, agx = 0, agy = 0;
+  switch (anim) {
+    case A_DOUBLE_BLINK: animBlinkL = animBlinkR = tri((p * 2) % 1); break;
+    case A_EYE_ROLL: animGaze = true; agx = Math.cos(Math.PI - p * 2 * Math.PI) * 0.9; agy = -Math.sin(Math.PI - p * 2 * Math.PI) * 0.9; break;
+    case A_WINK: animBlinkR = Math.min(1, tri(p) * 1.6); break;
+    case A_SQUINT: animGaze = true; agx = Math.sin(p * 3 * Math.PI) * 0.8; break;
+    case A_HOP: animHop = -Math.abs(Math.sin(p * 2 * Math.PI)) * 22; break;
+  }
+
   const tg = [...LOOKS[mood]];
   if (dizzy) { tg[0] *= 0.9; tg[1] *= 1.15; tg[8] = 0; tg[9] = 0; } // surprised: open, taller + narrower (keeps a gap), same pupils
+  if (anim === A_SQUINT) tg[8] = Math.max(tg[8], 0.45 * env);
+  if (anim === A_SURPRISE) { tg[1] *= 1 + 0.25 * env; tg[8] *= 1 - env; tg[9] *= 1 - env; }
   cur = cur.map((v, i) => lerp(v, tg[i], 0.25));
   // idle: no mouse/touch for IDLE_MS -> eyes dart around (pointermove/pointerdown reset lastActive)
   if (touching || dizzy) lastActive = now;
@@ -164,6 +195,7 @@ function loop(now) {
     gx = idleX; gy = idleY;
   } else crossTarget = 0;
   if (crossTarget > 0) { gx *= 0.2; gy *= 0.2; }
+  if (animGaze) { gx = agx; gy = agy; crossTarget = 0; }
   let gRX = gx, gRY = gy;
   if (dizzy) { gx = dzX; gy = dzY; gRX = -dzX; gRY = dzY; } // mirrored spin
   const kl = dizzy ? 0.25 : 0.22, kr = dizzy ? 0.25 : 0.11;
