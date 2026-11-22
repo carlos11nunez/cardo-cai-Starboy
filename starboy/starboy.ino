@@ -90,14 +90,13 @@ float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch o
 
 #define EGG_TOP 0.82f       // eye shape: top half this flat vs. the bottom (1 = plain oval)
 #define BLINK_MS 1000       // a blink: eases shut, holds, eases open (slow, like the reference)
-#define BLINK_GAP_MIN 6000  // time between blinks: random, 6-12 s
-#define BLINK_GAP_MAX 12000
+#define BLINK_EVERY_MS 12000  // one blink every 12 s
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
-enum Anim { A_NONE = -1, A_DOUBLE_BLINK, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_HOP,
+enum Anim { A_NONE = -1, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_HOP,
             A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {2000, 1400, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
+const uint16_t ANIM_DUR[ANIM_COUNT] = {1400, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
 float animLean = 0;  // lean -1..1
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
@@ -116,7 +115,6 @@ bool wasDizzy = false, wasBouncing = false;
 
 float animBlinkL = 0, animBlinkR = 0, animHop = 0;
 
-float tri(float x) { return 1 - fabsf(2 * x - 1); }  // 0 -> 1 -> 0 as x goes 0..1
 uint32_t dizzyUntil = 0, nextBlink = 0, blinkStart = 0;
 uint32_t touchStart = 0, batteryShowUntil = 0;
 bool touching = false, longPressFired = false;
@@ -290,7 +288,7 @@ void drawFrame(uint32_t now) {
   float t = now / 1000.0f;
   // blink: 150 ms down + up, every 2-6 s
   float blink = 0;
-  if (now >= nextBlink) { blinkStart = now; nextBlink = now + random(BLINK_GAP_MIN, BLINK_GAP_MAX); }
+  if (now >= nextBlink) { blinkStart = now; nextBlink = now + BLINK_EVERY_MS; }
   uint32_t bt = now - blinkStart;
   if (bt < BLINK_MS) {  // close 30%, hold 35%, open 35%, eased
     float q = bt / (float)BLINK_MS, s = q < 0.3f ? q / 0.3f : (q < 0.65f ? 1 : (1 - q) / 0.35f);
@@ -456,11 +454,6 @@ void loop() {
   bool animGaze = false;
   float agx = 0, agy = 0;
   switch (anim) {
-    case A_DOUBLE_BLINK: {  // two soft eased blinks with a pause between
-      float q = p < 0.5f ? p / 0.3f : (p - 0.55f) / 0.3f;
-      float s = (q > 0 && q < 1) ? sinf(PI * q) : 0;
-      animBlinkL = animBlinkR = s * s;
-    } break;
     case A_EYE_ROLL: animGaze = true; agx = cosf(PI - p * TWO_PI) * 0.9f; agy = -sinf(PI - p * TWO_PI) * 0.9f; break;
     case A_SQUINT: animGaze = true; agx = sinf(p * 3 * PI) * 0.8f; break;  // suspicious side-to-side glance
     case A_HOP: animHop = -fabsf(sinf(p * TWO_PI)) * 22; break;           // two little hops
