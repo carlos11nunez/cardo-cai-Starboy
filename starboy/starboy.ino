@@ -64,10 +64,10 @@ const uint8_t ORANGE_EYE[3] = {0xFF, 0x9A, 0x1F};
 const uint8_t CREAM[3]      = {255, 231, 176};   // googly pupils
 const uint8_t SWEAT[3]      = {80, 220, 190};    // worried sweat drop
 // Fire style: blue flame on the left, orange-red flame on the right, each with a brighter core
-const uint8_t FIRE_L_OUT[3] = {0x17, 0x39, 0xD1};
-const uint8_t FIRE_L_IN[3]  = {120, 200, 255};
-const uint8_t FIRE_R_OUT[3] = {255, 80, 20};
-const uint8_t FIRE_R_IN[3]  = {255, 200, 50};
+const uint8_t FIRE_L_OUT[3]  = {0x17, 0x39, 0xD1};  // flame body
+const uint8_t FIRE_L_CORE[3] = {110, 180, 255};     // lighter inner core
+const uint8_t FIRE_R_OUT[3]  = {255, 130, 25};
+const uint8_t FIRE_R_CORE[3] = {255, 205, 60};
 const uint8_t FIRE_L_PUPIL[3] = {215, 240, 255};  // pupils: pale, lighter than their flame
 const uint8_t FIRE_R_PUPIL[3] = {255, 245, 205};
 #define FLARE_MS 2500   // fire mode: shaking makes the flames flare up for this long
@@ -246,15 +246,20 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float b = cur.bright, pb = b * PUPIL_SHADE;
   bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY;  // blue + orange styles
   const uint8_t *e = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
-  if (mood == FIRE) {  // flame eyes: outer flame, brighter core, black dot pupil; a blink squashes the flame down
-    float H = ry * 1.45f * (1 + 0.35f * flare) * (1 - 0.85f * blink), R = rx * 0.95f * (1 + 0.25f * flare);
+  if (mood == FIRE) {  // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
+    float R = rx * 0.95f * (1 + 0.2f * flare), H = R * 1.7f * (1 + 0.35f * flare) * (1 - 0.85f * blink);  // plump teardrop
     float ph = left ? 0.0f : 1.7f;
-    const uint8_t *fo = left ? FIRE_L_OUT : FIRE_R_OUT, *fi = left ? FIRE_L_IN : FIRE_R_IN;
+    // shaken: each flame darts and bobs on its own; its tongues trail opposite the motion like real fire
+    cx += flare * (sinf(t * 6.5f + ph) * 16 + sinf(t * 11 + ph * 2) * 6);
+    cy += flare * sinf(t * 8 + ph) * 10;
+    float trail = -flare * 0.3f * cosf(t * 6.5f + ph);
+    const uint8_t *fo = left ? FIRE_L_OUT : FIRE_R_OUT, *fi = left ? FIRE_L_CORE : FIRE_R_CORE;
+    float dir = left ? -1.0f : 1.0f;  // each flame curls outward, mirrored
     const uint8_t *fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
     uint16_t ci = gfx->color565(fi[0] * b, fi[1] * b, fi[2] * b);
-    flameShape(cx, cy, R, H, ph, t, flare, gfx->color565(fo[0] * b, fo[1] * b, fo[2] * b));
-    flameShape(cx, cy + R * 0.25f, R * 0.55f, H * 0.6f, ph + 1, t, flare, ci);
-    if (blink < 0.6f) gfx->fillCircle(cx + lx * R * 0.4f, cy + 0.3f * H + ly * R * 0.3f, prx * (1 + 0.3f * flare), gfx->color565(fp[0] * b, fp[1] * b, fp[2] * b));
+    flameShape(cx, cy, R, H, ph, t, flare, trail, dir, true, gfx->color565(fo[0] * b, fo[1] * b, fo[2] * b));
+    flameShape(cx - dir * R * 0.08f, cy + R * 0.22f, R * 0.62f, H * 0.68f, ph + 1, t, flare, trail, dir, false, ci);  // lighter inner core
+    if (blink < 0.6f) gfx->fillCircle(cx + lx * R * 0.35f, cy + 0.3f * H + R * 0.12f + ly * R * 0.25f, prx * 1.2f * (1 + 0.3f * flare), gfx->color565(fp[0] * b, fp[1] * b, fp[2] * b));
     if (flare > 0.05f) {  // embers rising off the flare
       for (int k = 0; k < 6; k++) {
         float q = fmodf(t * 1.6f + k / 6.0f, 1.0f);
@@ -336,17 +341,33 @@ void drawDizzyStars(float t) {
   }
 }
 
-// One flame: a round base plus a flickering main tongue and two side tongues.
-// fl = flare-up 0..1: faster, wilder flicker when the keychain is shaken
-void flameShape(float cx, float cy, float R, float H, float ph, float t, float fl, uint16_t c) {
-  float sp = 1 + fl;                                                                     // flicker speed
-  float fx = (sinf(t * 9 * sp + ph) * (0.14f + 0.25f * fl) + sinf(t * 15 * sp + ph * 2) * (0.06f + 0.12f * fl)) * R;  // tip sways
-  float fh = 1 + (0.08f + 0.2f * fl) * sinf(t * 11 * sp + ph);                           // tip stretches
-  float by = cy + 0.3f * H;                                                     // base circle center
+// One cartoon flame (like a flame mascot): plump round body, wavy drippy bottom, a big tip that curls
+// to one side, a small spike on the other side, and a little detached wisp beside the tip.
+// fl = flare-up 0..1 (faster, wilder); lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left;
+// detail = draw the drips and wisp (off for the inner core layer)
+void flameShape(float cx, float cy, float R, float H, float ph, float t, float fl, float lean, float dir, bool detail, uint16_t c) {
+  const float TONGUE[2][4] = {{0.05f, 1.2f, 0.85f, 0.55f}, {-0.5f, 0.55f, 0.45f, 0.15f}};  // x offset, height, width, curl
+  float sp = 1 + fl, by = cy + 0.3f * H;
   gfx->fillCircle(cx, by, R, c);
-  gfx->fillTriangle(cx - R * 0.98f, by - R * 0.2f, cx + R * 0.98f, by - R * 0.2f, cx + fx, by - H * fh, c);
-  gfx->fillTriangle(cx - R, by, cx - R * 0.1f, by - R * 0.6f, cx - R * 0.8f + fx * 0.6f, by - H * 0.6f * (2 - fh), c);
-  gfx->fillTriangle(cx + R, by, cx + R * 0.1f, by - R * 0.6f, cx + R * 0.75f + fx * 0.6f, by - H * 0.55f * fh, c);
+  if (detail)  // wavy, drippy bottom
+    for (int i = 0; i < 4; i++)
+      gfx->fillCircle(cx + (-0.6f + 0.4f * i) * R, by + R * (0.8f + 0.05f * sinf(t * 5 * sp + ph + i)), R * 0.24f, c);
+  for (int k = 0; k < 2; k++) {
+    float stretch = 1 + (0.06f + 0.15f * fl) * sinf(t * 11 * sp + ph + k);
+    for (int i = 1; i <= 20; i++) {
+      float u = i / 20.0f;
+      float sway = sinf(t * 7 * sp + ph + k * 1.3f + u * 2.5f) * R * (0.08f + 0.15f * fl) * u;
+      float x = cx + dir * (TONGUE[k][0] * R * (1 - 0.4f * u) + TONGUE[k][3] * R * u * u) + lean * R * u * u + sway;
+      float y = by - H * TONGUE[k][1] * u * stretch;
+      gfx->fillCircle(x, y, R * TONGUE[k][2] * powf(1 - u, 0.7f) + 1.5f, c);
+    }
+  }
+  if (detail) {  // little detached wisp beside the curled tip
+    float wx = cx + dir * R * 0.95f + lean * R * 0.3f + sinf(t * 5 * sp + ph) * R * 0.08f * sp;
+    float wy = by - H * (1.0f + 0.08f * sinf(t * 4 * sp + ph)), wr = R * 0.16f;
+    gfx->fillCircle(wx, wy, wr, c);
+    gfx->fillTriangle(wx - wr, wy - wr * 0.2f, wx + wr, wy - wr * 0.2f, wx + dir * wr * 0.6f, wy - wr * 3.0f, c);
+  }
 }
 
 // worried: every SWEAT_EVERY_S a big sweat drop pops in at the upper-left of the left eye,

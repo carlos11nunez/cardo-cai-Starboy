@@ -35,7 +35,7 @@ const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','FI
 const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
-const FIRE_L_OUT = [0x17, 0x39, 0xD1], FIRE_L_IN = [120, 200, 255], FIRE_R_OUT = [255, 80, 20], FIRE_R_IN = [255, 200, 50]; // fire
+const FIRE_L_OUT = [0x17, 0x39, 0xD1], FIRE_L_CORE = [110, 180, 255], FIRE_R_OUT = [255, 130, 25], FIRE_R_CORE = [255, 205, 60]; // fire: body + lighter core
 const FIRE_L_PUPIL = [215, 240, 255], FIRE_R_PUPIL = [255, 245, 205], FLARE_MS = 2500; // pale pupils; shake flare length
 let flareUntil = 0, flare = 0;
 const SWEAT_EVERY_S = 8, SWEAT_TIME_S = 2.5; // worried: a sweat drop every 8 s that takes 2.5 s to drip
@@ -129,13 +129,18 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const tilt = (left ? ctilt + 2 : -ctilt - 1) + headTilt;
   const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY; // blue + orange styles
   const col = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
-  if (mood === FIRE) { // flame eyes: outer flame, brighter core, black dot pupil; a blink squashes the flame down
-    const H = ry * 1.45 * (1 + 0.35 * flare) * (1 - 0.85 * blink), R = rx * 0.95 * (1 + 0.25 * flare), ph = left ? 0 : 1.7;
-    const fo = left ? FIRE_L_OUT : FIRE_R_OUT, fi = left ? FIRE_L_IN : FIRE_R_IN, fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
+  if (mood === FIRE) { // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
+    const R = rx * 0.95 * (1 + 0.2 * flare), H = R * 1.7 * (1 + 0.35 * flare) * (1 - 0.85 * blink), ph = left ? 0 : 1.7; // plump teardrop
+    // shaken: each flame darts and bobs on its own; its tongues trail opposite the motion like real fire
+    cx += flare * (Math.sin(t * 6.5 + ph) * 16 + Math.sin(t * 11 + ph * 2) * 6);
+    cy += flare * Math.sin(t * 8 + ph) * 10;
+    const trail = -flare * 0.3 * Math.cos(t * 6.5 + ph);
+    const dir = left ? -1 : 1; // each flame curls outward, mirrored
+    const fo = left ? FIRE_L_OUT : FIRE_R_OUT, fi = left ? FIRE_L_CORE : FIRE_R_CORE, fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
     const ci = `rgb(${fi.map(c => c * b)})`;
-    flameShape(cx, cy, R, H, ph, t, flare, `rgb(${fo.map(c => c * b)})`);
-    flameShape(cx, cy + R * 0.25, R * 0.55, H * 0.6, ph + 1, t, flare, ci);
-    if (blink < 0.6) { g.fillStyle = `rgb(${fp.map(c => c * b)})`; g.beginPath(); g.arc(cx + lx * R * 0.4, cy + 0.3 * H + ly * R * 0.3, prx * (1 + 0.3 * flare), 0, Math.PI * 2); g.fill(); }
+    flameShape(cx, cy, R, H, ph, t, flare, trail, dir, true, `rgb(${fo.map(c => c * b)})`);
+    flameShape(cx - dir * R * 0.08, cy + R * 0.22, R * 0.62, H * 0.68, ph + 1, t, flare, trail, dir, false, ci); // lighter inner core
+    if (blink < 0.6) { g.fillStyle = `rgb(${fp.map(c => c * b)})`; g.beginPath(); g.arc(cx + lx * R * 0.35, cy + 0.3 * H + R * 0.12 + ly * R * 0.25, prx * 1.2 * (1 + 0.3 * flare), 0, Math.PI * 2); g.fill(); }
     if (flare > 0.05) { // embers rising off the flare
       g.fillStyle = ci;
       for (let k = 0; k < 6; k++) {
@@ -207,17 +212,26 @@ function drawDizzyStars(t) {
 }
 
 // worried: every SWEAT_EVERY_S a big sweat drop droops down around the outside of the left eye
-// One flame: a round base plus a flickering main tongue and two side tongues.
-// fl = flare-up 0..1: faster, wilder flicker when the keychain is shaken
-function flameShape(cx, cy, R, H, ph, t, fl, color) {
-  const sp = 1 + fl;
-  const fx = (Math.sin(t * 9 * sp + ph) * (0.14 + 0.25 * fl) + Math.sin(t * 15 * sp + ph * 2) * (0.06 + 0.12 * fl)) * R;
-  const fh = 1 + (0.08 + 0.2 * fl) * Math.sin(t * 11 * sp + ph), by = cy + 0.3 * H;
-  const tri = (a, b, c) => { g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...c); g.fill(); };
-  g.fillStyle = color; g.beginPath(); g.arc(cx, by, R, 0, Math.PI * 2); g.fill();
-  tri([cx - R * 0.98, by - R * 0.2], [cx + R * 0.98, by - R * 0.2], [cx + fx, by - H * fh]);
-  tri([cx - R, by], [cx - R * 0.1, by - R * 0.6], [cx - R * 0.8 + fx * 0.6, by - H * 0.6 * (2 - fh)]);
-  tri([cx + R, by], [cx + R * 0.1, by - R * 0.6], [cx + R * 0.75 + fx * 0.6, by - H * 0.55 * fh]);
+// One cartoon flame (like a flame mascot): plump round body, wavy drippy bottom, a big tip that curls
+// to one side, a small spike on the other side, and a little detached wisp beside the tip.
+// fl = flare-up 0..1; lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left; detail = drips + wisp
+function flameShape(cx, cy, R, H, ph, t, fl, lean, dir, detail, color) {
+  const TONGUE = [[0.05, 1.2, 0.85, 0.55], [-0.5, 0.55, 0.45, 0.15]]; // x offset, height, width, curl
+  const sp = 1 + fl, by = cy + 0.3 * H, dot = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+  g.fillStyle = color; dot(cx, by, R);
+  if (detail) for (let i = 0; i < 4; i++) dot(cx + (-0.6 + 0.4 * i) * R, by + R * (0.8 + 0.05 * Math.sin(t * 5 * sp + ph + i)), R * 0.24); // drippy bottom
+  TONGUE.forEach(([dx, h, w, curl], k) => {
+    const stretch = 1 + (0.06 + 0.15 * fl) * Math.sin(t * 11 * sp + ph + k);
+    for (let i = 1; i <= 20; i++) {
+      const u = i / 20, sway = Math.sin(t * 7 * sp + ph + k * 1.3 + u * 2.5) * R * (0.08 + 0.15 * fl) * u;
+      dot(cx + dir * (dx * R * (1 - 0.4 * u) + curl * R * u * u) + lean * R * u * u + sway, by - H * h * u * stretch, R * w * Math.pow(1 - u, 0.7) + 1.5);
+    }
+  });
+  if (detail) { // little detached wisp beside the curled tip
+    const wx = cx + dir * R * 0.95 + lean * R * 0.3 + Math.sin(t * 5 * sp + ph) * R * 0.08 * sp, wy = by - H * (1 + 0.08 * Math.sin(t * 4 * sp + ph)), wr = R * 0.16;
+    dot(wx, wy, wr);
+    g.beginPath(); g.moveTo(wx - wr, wy - wr * 0.2); g.lineTo(wx + wr, wy - wr * 0.2); g.lineTo(wx + dir * wr * 0.6, wy - wr * 3); g.fill();
+  }
 }
 
 function drawSweat(cx, cy, rx, ry, t) {
