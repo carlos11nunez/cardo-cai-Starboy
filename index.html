@@ -41,7 +41,7 @@ const FIRE_R_OUT = [0x2B, 0x37, 0xFF], FIRE_R_CORE = [0x89, 0x94, 0xFE], FIRE_R_
 let flareUntil = 0, flare = 0;
 const HYPNO_MS = 4500; let hypnoUntil = 0, hypno = 0; // spiral mode shaken: swells huge and hovers over you, spinning (0..1)
 // spiral mode: little twinkling stars around the face [x, y, size]; the eyes keep getting distracted by them
-const SPIRAL_STARS = [[233, 88, 14], [233, 352, 10], [82, 382, 12], [386, 380, 10]];
+const SPIRAL_STARS = [[233, 86, 22], [233, 354, 16], [84, 380, 18], [384, 378, 16]];
 // spiral eyes: everything from spirals.svg (SPIRAL_L); shaken, the eyes swell and the main spiral spins (hypnosis),
 // clipped to a circle that reaches the tip stripes
 // Shapes per eye: [kind, n, x0, y0, ...] ending with -1. kind 0 white, 1 red, 2 dark; +10 = main spiral. SVG units, origin = star center.
@@ -230,6 +230,13 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   }
 }
 
+// A tiny copy of the spiral eye's star outline (first shape of SPIRAL_L), half-height r.
+function drawEyeStar(x, y, r, rot, color) {
+  const n = SPIRAL_L[1], s = r / SPIRAL_L_HDR[2], cr = Math.cos(rot), sr = Math.sin(rot);
+  g.fillStyle = color; g.beginPath();
+  for (let i = 0; i < n; i++) { const px = SPIRAL_L[2 + 2 * i], py = SPIRAL_L[3 + 2 * i]; g.lineTo(x + (px * cr - py * sr) * s, y + (px * sr + py * cr) * s); }
+  g.closePath(); g.fill();
+}
 function drawStar(cx, cy, r, rot, color) {
   g.fillStyle = color; g.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -315,7 +322,7 @@ function drawFrame(now) {
   const gap = 106 * faceScale;
   const mh = 30 * hypno, mv = -40 * hypno + 8 * hypno * Math.sin(t * 2.2); // hypnotizing: eyes spread, rise and hover
   if (mood === SPIRAL) SPIRAL_STARS.forEach(([x, y, r], k) => // twinkling star accents (spin along when hypnotizing)
-    drawStar(x, y, r * (0.6 + 0.4 * Math.sin(t * 3 + k * 2)), t * 0.4 + spinPh * 0.3 + k, 'rgb(255,235,140)'));
+    drawEyeStar(x, y, r * (0.6 + 0.4 * Math.sin(t * 3 + k * 2)), t * 0.4 + spinPh * 0.3 + k, 'rgb(255,235,140)'));
   drawEye(233 - gap - mh + ox + sx + bx, 225 + mv + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
   if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur[0] * faceScale, cur[1] * faceScale, t);
   drawEye(233 + gap + mh + ox + sx + bx, 225 + mv + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);

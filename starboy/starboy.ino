@@ -147,7 +147,7 @@ float flare = 0;  // fire mode flare-up strength 0..1
 uint32_t hypnoUntil = 0;
 float hypno = 0;  // spiral mode shaken: swells huge and hovers over you, spinning (0..1)
 // spiral mode: little twinkling stars around the face {x, y, size}; the eyes keep getting distracted by them
-const float SPIRAL_STARS[4][3] = {{233, 88, 14}, {233, 352, 10}, {82, 382, 12}, {386, 380, 10}};
+const float SPIRAL_STARS[4][3] = {{233, 86, 22}, {233, 354, 16}, {84, 380, 18}, {384, 378, 16}};
 
 float lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0;  // per-eye gaze -1..1; right eye lags = goofy
 float tiltX = 0, tiltY = 0, prevTiltX = 0, prevTiltY = 0;  // from IMU
@@ -385,6 +385,16 @@ void drawStar(float cx, float cy, float r, float rot, uint16_t c) {
   for (int i = 0; i < 10; i++) { int j = (i + 1) % 10; gfx->fillTriangle(cx, cy, px[i], py[i], px[j], py[j], c); }
 }
 
+// A tiny copy of the spiral eye's star outline (first shape of SPIRAL_L), half-height r.
+void drawEyeStar(float x, float y, float r, float rot, uint16_t c) {
+  const int16_t *d = SPIRAL_L + 2;
+  int n = SPIRAL_L[1];
+  static float xs[400], ys[400];
+  float s = r / SPIRAL_L_HDR[2], cr = cosf(rot), sr = sinf(rot);
+  for (int i = 0; i < n; i++, d += 2) { xs[i] = x + (d[0] * cr - d[1] * sr) * s; ys[i] = y + (d[0] * sr + d[1] * cr) * s; }
+  fillPoly(xs, ys, n, c);
+}
+
 // dizzy: little stars orbiting above the eyes, fading out as it wears off
 void drawDizzyStars(float t) {
   if (shakeAmp < 0.02f) return;
@@ -498,8 +508,8 @@ void drawFrame(uint32_t now) {
   float mh = 30 * hypno, mv = -40 * hypno + 8 * hypno * sinf(t * 2.2f);  // hypnotizing: eyes spread, rise and hover
   if (mood == SPIRAL) {  // twinkling star accents (spin along when hypnotizing)
     for (int k = 0; k < 4; k++)
-      drawStar(SPIRAL_STARS[k][0], SPIRAL_STARS[k][1], SPIRAL_STARS[k][2] * (0.6f + 0.4f * sinf(t * 3 + k * 2)), t * 0.4f + spinPh * 0.3f + k,
-               gfx->color565(255, 235, 140));
+      drawEyeStar(SPIRAL_STARS[k][0], SPIRAL_STARS[k][1], SPIRAL_STARS[k][2] * (0.6f + 0.4f * sinf(t * 3 + k * 2)), t * 0.4f + spinPh * 0.3f + k,
+                  gfx->color565(255, 235, 140));
   }
   drawEye(233 - gap - mh + ox + sx + bx, 225 + mv + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
   if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur.rx * faceScale, cur.ry * faceScale, t);
