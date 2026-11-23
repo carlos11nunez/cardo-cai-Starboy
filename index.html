@@ -157,8 +157,13 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const sr = STAR_PUPIL_R * faceScale * (1 + 0.06 * Math.sin(t * 3));
   const swirl = mood === STARP && !left, sw = SWIRL_R * faceScale, big = star ? sr : sw;
   const reachX = (star || swirl) ? (rx - big) * 0.5 : (rx - prx * 0.5) * 0.6, reachY = (star || swirl) ? (ry - big) * 0.5 : (ry - pry * 0.5) * 0.6;
-  const px = cx + inward * (pox * k + cross * rx * 0.35) + lx * reachX;
-  const py = cy + poy * k + ly * reachY;
+  let px = cx + inward * (pox * k + cross * rx * 0.35) + lx * reachX;
+  let py = cy + poy * k + ly * reachY;
+  if (mood === DOME) { // stay inside the dome: above the flat bottom, away from its narrower lower corners
+    const side = 0.85 * rx - prx - 4;
+    px = clamp(px, cx - side, cx + side);
+    py = Math.min(py, cy + ry * 0.45 - pry - 4);
+  }
   g.save(); eggPath(cx, cy, rx, ry, tilt); g.clip();
   if (blink > 0.6) {} // nearly closed: only the eye's curved outline shows, no pupil
   else if (star) drawStar(px, py, sr, 0.3 + 0.45 * Math.sin(t * 1.3), `rgb(${col.map(c => c * b * PUPIL_SHADE)})`);

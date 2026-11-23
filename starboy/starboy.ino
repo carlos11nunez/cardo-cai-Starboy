@@ -283,6 +283,11 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float reachY = (star || swirl) ? (ry - big) * 0.5f : (ry - pry * 0.5f) * 0.6f;
   float px = cx + inward * (cur.pox * k + cross * rx * 0.35f) + lx * reachX;
   float py = cy + cur.poy * k + ly * reachY;
+  if (mood == DOME) {  // stay inside the dome: above the flat bottom, away from its narrower lower corners
+    float side = 0.85f * rx - prx - 4;
+    px = constrain(px, cx - side, cx + side);
+    py = min(py, cy + ry * 0.45f - pry - 4);
+  }
   Ell pupil = {px, py, prx, pry, tilt};
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
   if (mood == DOME || mood == SLAB) pc = BLACK;  // black dot pupils
