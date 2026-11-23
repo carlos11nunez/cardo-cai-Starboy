@@ -140,7 +140,7 @@ float lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0;  // per-eye gaze -1..1; ri
 float tiltX = 0, tiltY = 0, prevTiltX = 0, prevTiltY = 0;  // from IMU
 float idleX = 0, idleY = 0, cross = 0, crossTarget = 0;
 uint32_t lastActive = 0, nextSaccade = 0;
-uint32_t curiousUntil = 0, perkUntil = 0;  // idle: squinting at something / perked up by something
+uint32_t curiousUntil = 0, perkUntil = 0, trackUntil = 0;  // idle: squinting at something / perked up by something
 float idleTilt = 0;                       // idle: head tilts toward where it looks, like a curious dog
 float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch on quick glances
 
@@ -150,9 +150,9 @@ float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch o
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 8000
-enum Anim { A_NONE = -1, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_HOP,
-            A_SHY, A_LEAN, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {1400, 2000, 1000, 900, 1800, 1600, 0};  // ms; dizzy reuses the shake effect
+enum Anim { A_NONE = -1, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_SCAN,
+            A_SHY, A_LEAN, A_DOUBLE_TAKE, A_INSPECT, A_DIZZY, ANIM_COUNT };
+const uint16_t ANIM_DUR[ANIM_COUNT] = {1400, 2000, 1000, 2600, 1800, 1600, 1800, 2200, 0};  // ms; dizzy reuses the shake effect
 float animLean = 0;  // lean -1..1
 int anim = A_NONE;
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
@@ -169,7 +169,7 @@ uint32_t bounceUntil = 0, lastFrame = 0;
 uint32_t angryUntil = 0;
 bool wasDizzy = false, wasBouncing = false;
 
-float animBlinkL = 0, animBlinkR = 0, animHop = 0;
+float animBlinkL = 0, animBlinkR = 0;
 
 uint32_t dizzyUntil = 0, nextBlink = 0, blinkStart = 0;
 uint32_t touchStart = 0, batteryShowUntil = 0;
@@ -443,7 +443,6 @@ void drawFrame(uint32_t now) {
   headTilt = SWAY_TILT * shakeAmp * sinf(t * 2.2f);
   sx += 22 * animLean; headTilt += 16 * animLean;  // lean animation
   headTilt += idleTilt;
-  oy += animHop;
   float gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
   if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur.rx * faceScale, cur.ry * faceScale, t);
@@ -593,15 +592,18 @@ void loop() {
   float p = anim == A_NONE ? 1 : (now - animStart) / (float)ANIM_DUR[anim];
   if (p >= 1) anim = A_NONE;
   float env = anim == A_NONE ? 0 : sinf(PI * p);  // 0 -> 1 -> 0 over the animation
-  animBlinkL = animBlinkR = animHop = animLean = 0;
+  animBlinkL = animBlinkR = animLean = 0;
+  float side = animStart % 2 ? 1 : -1, take = p > 0.45f ? sinf(PI * (p - 0.45f) / 0.55f) : 0;  // random side; double-take snap
   bool animGaze = false;
   float agx = 0, agy = 0;
   switch (anim) {
     case A_EYE_ROLL: animGaze = true; agx = cosf(PI - p * TWO_PI) * 0.9f; agy = -sinf(PI - p * TWO_PI) * 0.9f; break;
     case A_SQUINT: animGaze = true; agx = sinf(p * 3 * PI) * 0.8f; break;  // suspicious side-to-side glance
-    case A_HOP: animHop = -fabsf(sinf(p * TWO_PI)) * 22; break;           // two little hops
+    case A_SCAN: animGaze = true; agx = -cosf(p * TWO_PI) * 0.9f; agy = -0.1f; animLean = agx * 0.3f; break;  // slow sweep across the room
     case A_SHY: animGaze = true; agx = -0.4f; agy = 0.9f; break;         // look down and away
     case A_LEAN: animLean = sinf(p * TWO_PI); break;                     // tilt and slide side to side
+    case A_DOUBLE_TAKE: animGaze = true; agx = side * (p < 0.3f ? 0.5f : p < 0.45f ? 0 : 0.95f); break;  // glance, look away, snap back
+    case A_INSPECT: animGaze = true; agx = side * 0.35f + sinf(p * 3 * TWO_PI) * 0.12f; agy = 0.6f; animLean = side * 0.35f * env; break;  // lean in and study something
     default: break;
   }
 
@@ -613,6 +615,8 @@ void loop() {
   }
   if (anim == A_SQUINT) target.lid = max(target.lid, 0.45f * env);
   if (anim == A_SHY) target.lid = max(target.lid, 0.35f * env);
+  if (anim == A_SCAN || anim == A_INSPECT) target.lid = max(target.lid, 0.22f * env);
+  if (anim == A_DOUBLE_TAKE) { target.ry *= 1 + 0.2f * take; target.lid *= 1 - take; target.slant *= 1 - take; }
   if (anim == A_SURPRISE) { target.ry *= 1 + 0.25f * env; target.lid *= 1 - env; target.slant *= 1 - env; }
   if (now < curiousUntil) target.lid = max(target.lid, 0.18f);  // squint to focus on something
   if (now < perkUntil) target.ry *= 1.08f;                       // perk up: something caught its eye
@@ -641,7 +645,9 @@ void loop() {
       long roll = random(100);
       if (roll < 25) { idleX = random(-100, 101) / 100.0f; idleY = random(-80, 81) / 100.0f; curiousUntil = now + 700; }  // peer hard at something
       else if (roll < 40) perkUntil = now + 450;
+      else if (roll < 52) { trackUntil = now + 2500; nextSaccade = trackUntil; perkUntil = now + 450; }  // spotted a fly
     }
+    if (now < trackUntil) { idleX = sinf(now * 0.0019f) * 0.8f; idleY = sinf(now * 0.0027f + 1) * 0.5f; }  // follow it around smoothly
     gx = idleX; gy = idleY;
   } else crossTarget = 0;
   if (crossTarget > 0) { gx *= 0.2f; gy *= 0.2f; }  // cross-eyed looks near center
