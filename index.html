@@ -41,7 +41,7 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [78, 92, 3,1.10, 6, 7, 0,  0,0.00,0.00,1.0],  [88, 85,0,1.03,50,50,26,  2,0.22,0.15,1.0],
   [78,108,14,0.85,14,60, 0,  0,0.00,0.00,1.0],  // STARP: left big star pupil, right smaller eye with cat slit
   [80, 90, 0,1.00,14,14,18, 20,0.00,0.00,1.0],  // DOME: round top, flat bottom, black dot pupils low
-  [58, 98, 7,1.12,13,13, 8,  4,0.10,0.14,1.0],  // SLAB: tall worried slabs, droopy outer corners
+  [58, 98, 7,1.12,13,13, 8,  4,0.00,0.07,1.0],  // SLAB: tall full worried eyes, slight droop at the outer corners
   [82, 88, 0,1.04,30,26,10, 40,0.00,0.00,1.0],  // GOOGLY: big round eyes, big cream pupils sitting low
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
@@ -146,8 +146,8 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   else if (mood === GOOGLY) fillRotEllipse(px, py, prx, pry, tilt, CREAM, b);
   else fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
   g.restore();
-  // flat bottoms: Dome is cut a bit below the middle, Slab near the bottom
-  const cut = mood === DOME ? 0.45 : mood === SLAB ? 0.8 : 0;
+  // flat bottom for Dome (cut a bit below the middle)
+  const cut = mood === DOME ? 0.45 : 0;
   if (cut > 0) { g.fillStyle = '#000'; g.fillRect(cx - rx - 8, cy + ry * cut, 2 * rx + 16, 2 * ry); }
 
   // a full blink hides the eye; a thin curved line is drawn in its place below
@@ -185,11 +185,11 @@ function drawDizzyStars(t) {
   }
 }
 
-// worried: a teardrop slides down beside the left eye, every 3 s
+// worried: a big sweat drop on the lower-left of the left eye, slowly sinking and repeating every 4 s
 function drawSweat(x, y, t) {
-  const q = (t % 3) / 3, r = 10 * faceScale; y += -30 + q * 60;
+  const q = (t % 4) / 4, r = 16 * faceScale; y += 25 + q * 22;
   g.fillStyle = `rgb(${SWEAT})`; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-  g.beginPath(); g.moveTo(x - r * 0.95, y - r * 0.3); g.lineTo(x + r * 0.95, y - r * 0.3); g.lineTo(x, y - r * 2.4); g.fill();
+  g.beginPath(); g.moveTo(x - r * 0.97, y - r * 0.25); g.lineTo(x + r * 0.97, y - r * 0.25); g.lineTo(x + r * 0.15, y - r * 2.7); g.fill();
 }
 
 function drawBattery(cx, cy, pct, showText) {
@@ -219,7 +219,7 @@ function drawFrame(now) {
   headTilt += idleTilt;
   const gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
-  if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx - cur[0] * faceScale - 4, 225 + oy + sy + by, t);
+  if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx - cur[0] * faceScale + 10, 225 + oy + sy + by, t); // overlaps the eye's edge
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
   drawDizzyStars(t);
 

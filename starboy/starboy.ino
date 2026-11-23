@@ -89,7 +89,7 @@ const Look LOOKS[MOOD_COUNT] = {
   /*ROUND   */ {88,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
   /*STARP   */ {78, 108, 14, 0.85f, 14, 60,  0,   0, 0.00f, 0.00f, 1.0f},   // left: big star pupil, right: smaller eye with cat slit
   /*DOME    */ {80,  90,  0, 1.00f, 14, 14, 18,  20, 0.00f, 0.00f, 1.0f},   // round top, flat bottom, black dot pupils low
-  /*SLAB    */ {58,  98,  7, 1.12f, 13, 13,  8,   4, 0.10f, 0.14f, 1.0f},   // tall worried slabs, droopy outer corners
+  /*SLAB    */ {58,  98,  7, 1.12f, 13, 13,  8,   4, 0.00f, 0.07f, 1.0f},   // tall full worried eyes, slight droop at the outer corners
   /*GOOGLY  */ {82,  88,  0, 1.04f, 30, 26, 10,  40, 0.00f, 0.00f, 1.0f},   // big round eyes, big cream pupils sitting low
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
@@ -261,8 +261,8 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   }
   else fillEll(pupil, pc, &eye);
 
-  // flat bottoms: Dome is cut a bit below the middle, Slab near the bottom
-  float cut = mood == DOME ? 0.45f : (mood == SLAB ? 0.8f : 0);
+  // flat bottom for Dome (cut a bit below the middle)
+  float cut = mood == DOME ? 0.45f : 0;
   if (cut > 0) gfx->fillRect(cx - rx - 8, cy + ry * cut, 2 * rx + 16, 2 * ry, BLACK);
 
   // top lid: black above a line from inner corner to (lower) outer corner.
@@ -305,13 +305,13 @@ void drawDizzyStars(float t) {
   }
 }
 
-// worried: a teardrop slides down beside the left eye, every 3 s
+// worried: a big sweat drop on the lower-left of the left eye, slowly sinking and repeating every 4 s
 void drawSweat(float x, float y, float t) {
-  float q = fmodf(t, 3.0f) / 3.0f, r = 10 * faceScale;
-  y += -30 + q * 60;
+  float q = fmodf(t, 4.0f) / 4.0f, r = 16 * faceScale;
+  y += 25 + q * 22;
   uint16_t c = gfx->color565(SWEAT[0], SWEAT[1], SWEAT[2]);
   gfx->fillCircle(x, y, r, c);
-  gfx->fillTriangle(x - r * 0.95f, y - r * 0.3f, x + r * 0.95f, y - r * 0.3f, x, y - r * 2.4f, c);
+  gfx->fillTriangle(x - r * 0.97f, y - r * 0.25f, x + r * 0.97f, y - r * 0.25f, x + r * 0.15f, y - r * 2.7f, c);
 }
 
 void drawBattery(int cx, int cy, int pct, bool showText) {
@@ -352,7 +352,7 @@ void drawFrame(uint32_t now) {
   oy += animHop;
   float gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
-  if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx - cur.rx * faceScale - 4, 225 + oy + sy + by, t);
+  if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx - cur.rx * faceScale + 10, 225 + oy + sy + by, t);  // overlaps the eye's edge
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, max(blink, animBlinkR), t);
   drawDizzyStars(t);
 
