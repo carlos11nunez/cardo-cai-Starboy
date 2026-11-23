@@ -149,7 +149,7 @@ float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch o
 #define BLINK_EVERY_MS 12000  // one blink every 12 s
 
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
-#define ANIM_EVERY_MS 8000
+#define ANIM_EVERY_MS 4000
 enum Anim { A_NONE = -1, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_SCAN,
             A_SHY, A_LEAN, A_DOUBLE_TAKE, A_INSPECT, A_DIZZY, ANIM_COUNT };
 const uint16_t ANIM_DUR[ANIM_COUNT] = {1400, 2000, 1000, 2600, 1800, 1600, 1800, 2200, 0};  // ms; dizzy reuses the shake effect
@@ -427,9 +427,11 @@ void drawFrame(uint32_t now) {
   float t = now / 1000.0f;
   // blink: 150 ms down + up, every 2-6 s
   float blink = 0;
+  bool shaking = now < dizzyUntil || now < bounceUntil || now < flareUntil;
+  if (shaking && nextBlink < now + 1500) nextBlink = now + 1500;  // no blinking while shaken, nor right after
   if (now >= nextBlink) { blinkStart = now; nextBlink = now + BLINK_EVERY_MS; }
   uint32_t bt = now - blinkStart;
-  if (bt < BLINK_MS) {  // close 30%, hold 35%, open 35%, eased
+  if (!shaking && bt < BLINK_MS) {  // close 30%, hold 35%, open 35%, eased
     float q = bt / (float)BLINK_MS, s = q < 0.3f ? q / 0.3f : (q < 0.65f ? 1 : (1 - q) / 0.35f);
     blink = s * s * (3 - 2 * s);
   }
@@ -645,7 +647,7 @@ void loop() {
       long roll = random(100);
       if (roll < 25) { idleX = random(-100, 101) / 100.0f; idleY = random(-80, 81) / 100.0f; curiousUntil = now + 700; }  // peer hard at something
       else if (roll < 40) perkUntil = now + 450;
-      else if (roll < 52) { trackUntil = now + 2500; nextSaccade = trackUntil; perkUntil = now + 450; }  // spotted a fly
+      else if (roll < 62) { trackUntil = now + 2500; nextSaccade = trackUntil; perkUntil = now + 450; }  // spotted a fly
     }
     if (now < trackUntil) { idleX = sinf(now * 0.0019f) * 0.8f; idleY = sinf(now * 0.0027f + 1) * 0.5f; }  // follow it around smoothly
     gx = idleX; gy = idleY;
