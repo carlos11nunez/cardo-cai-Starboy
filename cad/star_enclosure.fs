@@ -55,6 +55,7 @@ const USB_W = 12.5;         // fits a USB-C plug overmold
 const USB_H = 7.0;
 const LOOP_HOLE = 3.5;      // for the metal keyring
 const LOOP_R = 38.0;        // loop tab distance from center, behind the top point (just outside the pod)
+const LOOP_DROP = 1.0;      // how far the loop tab sticks out the back: tab length = this + 4 mm (was 2.5)
 // shortcut: button angles estimated from the board photo, verify on the real board before printing.
 const BUTTON_ANGLES = [27.0, -13.0, -58.0]; // RST, BOOT, PWR
 const PIN_D = 2.0;
@@ -157,7 +158,7 @@ export const starboyEnclosure = defineFeature(function(context is Context, id is
         // loop tab: sticks out of the plate's back behind the top point, rounded bottom, sideways hole
         const lx = LOOP_R * cos(TOP_ANGLE * degree);
         const ly = LOOP_R * sin(TOP_ANGLE * degree);
-        const lz = Z_PLATE - 2.5;   // hole center, 2.5 mm behind the plate
+        const lz = Z_PLATE - LOOP_DROP;   // hole center, this far behind the plate (tab sticks out LOOP_DROP + 4 mm)
         fCuboid(context, id + "tab", { "corner1" : mm(lx - 3.5, ly - 4, lz), "corner2" : mm(lx + 3.5, ly + 4, Z_PLATE + 3.5) });  // reaches into the sloped back
         fCylinder(context, id + "tabEnd", { "bottomCenter" : mm(lx - 3.5, ly, lz), "topCenter" : mm(lx + 3.5, ly, lz), "radius" : 4 * millimeter });
         opBoolean(context, id + "merge", { "tools" : qUnion([plate, qCreatedBy(id + "pod", EntityType.BODY),
