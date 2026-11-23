@@ -58,6 +58,11 @@ struct Ell { float cx, cy, rx, ry, deg; float topK = 1; };
 // Colors: left eye mint green, right eye #1739d1; each pupil is a darker shade of its own eye
 const uint8_t LEFT_EYE[3]  = {152, 255, 152};
 const uint8_t RIGHT_EYE[3] = {0x17, 0x39, 0xD1};
+// Dome / Worried / Googly styles: blue left eye, orange right eye
+const uint8_t BLUE_EYE[3]   = {0x17, 0x39, 0xD1};
+const uint8_t ORANGE_EYE[3] = {0xFF, 0x9A, 0x1F};
+const uint8_t CREAM[3]      = {255, 231, 176};   // googly pupils
+const uint8_t SWEAT[3]      = {80, 220, 190};    // worried sweat drop
 const float PUPIL_SHADE = 0.4f;
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(LCD_CS, LCD_SCLK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
@@ -69,9 +74,9 @@ Arduino_GFX *panel = new Arduino_SH8601(bus, LCD_RST, 0, W, W);
 Arduino_Canvas *gfx = new Arduino_Canvas(W, W, panel);  // full-frame buffer (PSRAM) = no flicker
 
 // ---------- moods ----------
-enum Mood { CAT, WIDE, SHOCKED, ROUND, STARP, SLEEPY, LOWBAT, MOOD_COUNT };
-const Mood TAP_CYCLE[] = { CAT, WIDE, SHOCKED, ROUND, STARP };
-const int TAP_CYCLE_N = 5;
+enum Mood { CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, SLEEPY, LOWBAT, MOOD_COUNT };
+const Mood TAP_CYCLE[] = { CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY };
+const int TAP_CYCLE_N = 8;
 
 // eye rx/ry, tilt (deg, mirrored per eye), asym (right eye scale), pupil rx/ry,
 // pupil rest offset pox (toward center) / poy (down), lid (0..1 covered), slant (outer lid lower), brightness
@@ -83,6 +88,9 @@ const Look LOOKS[MOOD_COUNT] = {
   /*SHOCKED */ {78,  92,  3, 1.10f,  6,  7,  0,   0, 0.00f, 0.00f, 1.0f},   // tiny dot pupils
   /*ROUND   */ {88,  85,  0, 1.03f, 50, 50, 26,   2, 0.22f, 0.15f, 1.0f},   // flat-top eyes, big round pupils
   /*STARP   */ {78, 108, 14, 0.85f, 14, 60,  0,   0, 0.00f, 0.00f, 1.0f},   // left: big star pupil, right: smaller eye with cat slit
+  /*DOME    */ {80,  90,  0, 1.00f, 14, 14, 18,  20, 0.00f, 0.00f, 1.0f},   // round top, flat bottom, black dot pupils low
+  /*SLAB    */ {58,  98,  7, 1.12f, 13, 13,  8,   4, 0.10f, 0.14f, 1.0f},   // tall worried slabs, droopy outer corners
+  /*GOOGLY  */ {82,  88,  0, 1.04f, 30, 26, 10,  40, 0.00f, 0.00f, 1.0f},   // big round eyes, big cream pupils sitting low
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
 };
@@ -223,7 +231,8 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float prx = cur.prx * k, pry = cur.pry * k;
   float tilt = (left ? cur.tilt + 2 : -cur.tilt - 1) + headTilt;  // slightly uneven on purpose
   float b = cur.bright, pb = b * PUPIL_SHADE;
-  const uint8_t *e = left ? LEFT_EYE : RIGHT_EYE;
+  bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY;  // blue + orange styles
+  const uint8_t *e = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
   Ell eye = {cx, cy, rx, ry, tilt, EGG_TOP};
   fillEll(eye, gfx->color565(e[0] * b, e[1] * b, e[2] * b));
 
@@ -240,6 +249,8 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float py = cy + cur.poy * k + ly * reachY;
   Ell pupil = {px, py, prx, pry, tilt};
   uint16_t pc = gfx->color565(e[0] * pb, e[1] * pb, e[2] * pb);
+  if (mood == DOME || mood == SLAB) pc = BLACK;  // black dot pupils
+  if (mood == GOOGLY) pc = gfx->color565(CREAM[0] * b, CREAM[1] * b, CREAM[2] * b);
   if (blink > 0.6f) {}  // nearly closed: only the eye's curved outline shows, no pupil
   else if (star) drawStar(px, py, sr, 0.3f + 0.45f * sinf(t * 1.3f), pc);  // wonky: rocks back and forth
   else if (swirl) {  // spinning 2-turn spiral line (dense overlapping dots = a smooth stroke)
@@ -249,6 +260,10 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
     }
   }
   else fillEll(pupil, pc, &eye);
+
+  // flat bottoms: Dome is cut a bit below the middle, Slab near the bottom
+  float cut = mood == DOME ? 0.45f : (mood == SLAB ? 0.8f : 0);
+  if (cut > 0) gfx->fillRect(cx - rx - 8, cy + ry * cut, 2 * rx + 16, 2 * ry, BLACK);
 
   // top lid: black above a line from inner corner to (lower) outer corner.
   // A full blink hides the eye; a thin curved line is drawn in its place below.
@@ -290,6 +305,15 @@ void drawDizzyStars(float t) {
   }
 }
 
+// worried: a teardrop slides down beside the left eye, every 3 s
+void drawSweat(float x, float y, float t) {
+  float q = fmodf(t, 3.0f) / 3.0f, r = 10 * faceScale;
+  y += -30 + q * 60;
+  uint16_t c = gfx->color565(SWEAT[0], SWEAT[1], SWEAT[2]);
+  gfx->fillCircle(x, y, r, c);
+  gfx->fillTriangle(x - r * 0.95f, y - r * 0.3f, x + r * 0.95f, y - r * 0.3f, x, y - r * 2.4f, c);
+}
+
 void drawBattery(int cx, int cy, int pct, bool showText) {
   uint16_t c = pct <= 15 ? RED : (pct <= 40 ? YELLOW : GREEN);
   gfx->drawRoundRect(cx - 40, cy - 18, 76, 36, 6, WHITE);
@@ -328,6 +352,7 @@ void drawFrame(uint32_t now) {
   oy += animHop;
   float gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
+  if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx - cur.rx * faceScale - 4, 225 + oy + sy + by, t);
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, max(blink, animBlinkR), t);
   drawDizzyStars(t);
 

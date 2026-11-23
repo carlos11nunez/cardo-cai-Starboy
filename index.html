@@ -30,15 +30,19 @@
 <script>
 // Mirrors starboy.ino - keep them in sync.
 const W = 466, cv = document.getElementById('c'), g = cv.getContext('2d');
-const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, SLEEPY=5, LOWBAT=6;
-const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','SLEEPY','LOWBAT'];
-const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP];
+const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, DOME=5, SLAB=6, GOOGLY=7, SLEEPY=8, LOWBAT=9;
+const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','SLEEPY','LOWBAT'];
+const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
+const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [88,112,12,1.08,18,72, 0,  0,0.00,0.00,1.0],  [80,100,6,1.05,28,54, 0,  0,0.00,0.00,1.0],
   [78, 92, 3,1.10, 6, 7, 0,  0,0.00,0.00,1.0],  [88, 85,0,1.03,50,50,26,  2,0.22,0.15,1.0],
   [78,108,14,0.85,14,60, 0,  0,0.00,0.00,1.0],  // STARP: left big star pupil, right smaller eye with cat slit
+  [80, 90, 0,1.00,14,14,18, 20,0.00,0.00,1.0],  // DOME: round top, flat bottom, black dot pupils low
+  [58, 98, 7,1.12,13,13, 8,  4,0.10,0.14,1.0],  // SLAB: tall worried slabs, droopy outer corners
+  [82, 88, 0,1.04,30,26,10, 40,0.00,0.00,1.0],  // GOOGLY: big round eyes, big cream pupils sitting low
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 8000;
@@ -118,7 +122,8 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const ry = cry * k * (1 + WOBBLE * Math.sin(t * 1.7 + ph + 1)) * (1 + stretchY - 0.5 * stretchX) * (1 - 0.2 * blink); // blink squashes
   const prx = cprx * k, pry = cpry * k;
   const tilt = (left ? ctilt + 2 : -ctilt - 1) + headTilt;
-  const col = left ? LEFT_EYE : RIGHT_EYE;
+  const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY; // blue + orange styles
+  const col = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
   g.fillStyle = `rgb(${col.map(c => c * b)})`; eggPath(cx, cy, rx, ry, tilt); g.fill();
 
   // pupil, clipped to the eye outline
@@ -137,8 +142,13 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
     for (let i = 0; i <= 80; i++) { const q = i / 80, a = q * 4 * Math.PI - t * 3; g.lineTo(px + q * sw * Math.cos(a), py + q * sw * Math.sin(a)); }
     g.stroke();
   }
+  else if (mood === DOME || mood === SLAB) fillRotEllipse(px, py, prx, pry, tilt, [0, 0, 0], 1); // black dot pupils
+  else if (mood === GOOGLY) fillRotEllipse(px, py, prx, pry, tilt, CREAM, b);
   else fillRotEllipse(px, py, prx, pry, tilt, col, b * PUPIL_SHADE);
   g.restore();
+  // flat bottoms: Dome is cut a bit below the middle, Slab near the bottom
+  const cut = mood === DOME ? 0.45 : mood === SLAB ? 0.8 : 0;
+  if (cut > 0) { g.fillStyle = '#000'; g.fillRect(cx - rx - 8, cy + ry * cut, 2 * rx + 16, 2 * ry); }
 
   // a full blink hides the eye; a thin curved line is drawn in its place below
   const lid = clid + (1 - clid) * blink, slant = cslant * (1 - blink);
@@ -175,6 +185,13 @@ function drawDizzyStars(t) {
   }
 }
 
+// worried: a teardrop slides down beside the left eye, every 3 s
+function drawSweat(x, y, t) {
+  const q = (t % 3) / 3, r = 10 * faceScale; y += -30 + q * 60;
+  g.fillStyle = `rgb(${SWEAT})`; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.moveTo(x - r * 0.95, y - r * 0.3); g.lineTo(x + r * 0.95, y - r * 0.3); g.lineTo(x, y - r * 2.4); g.fill();
+}
+
 function drawBattery(cx, cy, pct, showText) {
   const c = pct <= 15 ? '#f00' : pct <= 40 ? '#ff0' : '#0f0';
   g.strokeStyle = '#fff'; g.lineWidth = 1; g.beginPath(); g.roundRect(cx-40, cy-18, 76, 36, 6); g.stroke();
@@ -202,6 +219,7 @@ function drawFrame(now) {
   headTilt += idleTilt;
   const gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
+  if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx - cur[0] * faceScale - 4, 225 + oy + sy + by, t);
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
   drawDizzyStars(t);
 
