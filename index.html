@@ -36,9 +36,8 @@ const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
 // colors from the custom drawing: orange flame on the left, blue on the right (body, core outline, core, pupil)
-const FIRE_L_OUT = [255, 100, 0], FIRE_L_LINE = [255, 160, 20], FIRE_L_CORE = [255, 182, 64];
-const FIRE_R_OUT = [45, 60, 255], FIRE_R_LINE = [70, 110, 255], FIRE_R_CORE = [140, 145, 255];
-const FIRE_L_PUPIL = [255, 225, 180], FIRE_R_PUPIL = [175, 190, 255], FLARE_MS = 2500; // pale pupils; shake flare length
+const FIRE_L_OUT = [0xFF, 0x61, 0x00], FIRE_L_CORE = [0xFF, 0xB8, 0x44], FIRE_L_PUPIL = [0xFF, 0xE2, 0xB8]; // colors from flame_emblem.svg
+const FIRE_R_OUT = [0x2B, 0x37, 0xFF], FIRE_R_CORE = [0x89, 0x94, 0xFE], FIRE_R_PUPIL = [0xA7, 0xBD, 0xF9], FLARE_MS = 2500; // shake flare length
 let flareUntil = 0, flare = 0;
 const SWEAT_EVERY_S = 8, SWEAT_TIME_S = 2.5; // worried: a sweat drop every 8 s that takes 2.5 s to drip
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
@@ -138,17 +137,12 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
     cy += flare * Math.sin(t * 8 + ph) * 10;
     const S = rx * 3.2 * (1 + 0.25 * flare); // as big as fits: top drop reaches the screen edge
     const f = { cx, cy: cy + 0.17 * S, S, dir: left ? 1 : -1, sy: 1 - 0.85 * blink, ph, t, fl: flare, lean: -flare * 0.3 * Math.cos(t * 6.5 + ph) };
-    const fo = left ? FIRE_L_OUT : FIRE_R_OUT, fl = left ? FIRE_L_LINE : FIRE_R_LINE, fi = left ? FIRE_L_CORE : FIRE_R_CORE, fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
+    const fo = left ? FIRE_L_OUT : FIRE_R_OUT, fi = left ? FIRE_L_CORE : FIRE_R_CORE, fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
     const body = `rgb(${fo.map(c => c * b)})`, core = `rgb(${fi.map(c => c * b)})`;
     const dot = ([x, y], r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
-    fillFlame(f, FLAME_OUT, 1, body);
-    fillFlame(f, FLAME_CORE, 1.08, `rgb(${fl.map(c => c * b)})`); // core outline
-    fillFlame(f, FLAME_CORE, 1, core);
-    g.fillStyle = body;
-    for (const [x0, y0, r0, tx0, ty0] of FLAME_DROPS) { // the two drops above the tip
-      const [x, y] = flamePt(f, x0, y0), [tx, ty] = flamePt(f, tx0, ty0), r = r0 * S;
-      dot([x, y], r); g.beginPath(); g.moveTo(x - r, y - r * 0.2); g.lineTo(x + r, y - r * 0.2); g.lineTo(tx, ty); g.fill();
-    }
+    fillFlame(f, FLAME_OUT, body);
+    fillFlame(f, FLAME_CORE, core);
+    fillFlame(f, FLAME_DROP1, body); fillFlame(f, FLAME_DROP2, body); // the two drops above the tip
     if (blink < 0.6) { g.fillStyle = `rgb(${fp.map(c => c * b)})`; dot(flamePt(f, FLAME_PUPIL[0] + lx * 0.05 * f.dir, FLAME_PUPIL[1] + ly * 0.04), FLAME_PUPIL[2] * S * (1 + 0.3 * flare)); }
     if (flare > 0.05) { // embers rising off the flare
       g.fillStyle = core;
@@ -222,12 +216,13 @@ function drawDizzyStars(t) {
   }
 }
 
-// The custom flame drawing (left/orange flame), traced: [x, y] in flame heights, origin at the body center,
-// y down, tip curling toward -x. FLAME_DROPS: [x, y, radius, tip x, tip y]. FLAME_PUPIL: [x, y, radius].
-const FLAME_OUT = [[0.33, -0.063], [0.336, 0], [0.33, 0.063], [0.312, 0.124], [0.282, 0.18], [0.242, 0.229], [0.193, 0.27], [0.137, 0.301], [0.076, 0.322], [0.012, 0.33], [-0.053, 0.326], [-0.115, 0.31], [-0.173, 0.283], [-0.225, 0.245], [-0.268, 0.199], [-0.302, 0.145], [-0.325, 0.085], [-0.335, 0.023], [-0.333, -0.04], [-0.34, -0.2], [-0.211, -0.111], [-0.244, -0.289], [-0.278, -0.489], [-0.293, -0.671], [-0.133, -0.533], [-0.011, -0.411], [0.078, -0.3], [0.133, -0.489], [0.222, -0.356], [0.3, -0.222], [0.338, -0.067]];
-const FLAME_CORE = [[0.256, 0.02], [0.251, 0.075], [0.234, 0.126], [0.208, 0.173], [0.174, 0.212], [0.132, 0.241], [0.086, 0.259], [0.037, 0.265], [-0.012, 0.259], [-0.058, 0.241], [-0.1, 0.212], [-0.134, 0.173], [-0.16, 0.126], [-0.177, 0.075], [-0.182, 0.02], [-0.178, -0.067], [-0.107, -0.011], [-0.133, -0.178], [-0.156, -0.344], [-0.044, -0.267], [0.078, -0.133], [0.138, -0.289], [0.211, -0.156]];
-const FLAME_DROPS = [[-0.389, -0.589, 0.033, -0.418, -0.693], [-0.382, -0.756, 0.022, -0.391, -0.8]];
-const FLAME_PUPIL = [0.062, 0.093, 0.067];
+// The custom flame drawing (flame_emblem.svg, orange flame), simplified: [x, y] in flame heights, origin at the
+// body center, y down, tip curling toward -x. The blue eye is drawn as its mirror image. FLAME_PUPIL: [x, y, radius].
+const FLAME_OUT = [[-0.293, -0.671], [-0.295, -0.575], [-0.277, -0.417], [-0.268, -0.37], [-0.264, -0.368], [-0.246, -0.246], [-0.204, -0.108], [-0.21, -0.105], [-0.255, -0.136], [-0.326, -0.203], [-0.34, -0.203], [-0.344, -0.197], [-0.344, -0.103], [-0.335, -0.032], [-0.331, -0.03], [-0.326, 0.011], [-0.295, 0.088], [-0.255, 0.164], [-0.219, 0.209], [-0.161, 0.262], [-0.095, 0.302], [-0.041, 0.32], [0.012, 0.329], [0.101, 0.325], [0.159, 0.307], [0.206, 0.276], [0.259, 0.222], [0.291, 0.175], [0.326, 0.093], [0.344, 0.004], [0.344, -0.108], [0.308, -0.223], [0.273, -0.288], [0.166, -0.437], [0.139, -0.493], [0.128, -0.493], [0.124, -0.482], [0.124, -0.459], [0.101, -0.366], [0.097, -0.364], [0.084, -0.308], [0.075, -0.301], [0.014, -0.395], [-0.101, -0.52], [-0.248, -0.649], [-0.277, -0.671]];
+const FLAME_CORE = [[-0.148, -0.348], [-0.157, -0.341], [-0.153, -0.261], [-0.117, -0.032], [-0.124, -0.03], [-0.166, -0.061], [-0.179, -0.056], [-0.186, 0.035], [-0.175, 0.093], [-0.155, 0.146], [-0.13, 0.182], [-0.095, 0.218], [-0.039, 0.256], [0.03, 0.278], [0.117, 0.271], [0.168, 0.242], [0.224, 0.193], [0.242, 0.166], [0.259, 0.104], [0.262, 0.042], [0.251, -0.03], [0.237, -0.083], [0.204, -0.172], [0.144, -0.288], [0.13, -0.286], [0.108, -0.255], [0.088, -0.203], [0.079, -0.157], [0.072, -0.154], [0.032, -0.212], [-0.008, -0.255], [-0.07, -0.306]];
+const FLAME_DROP1 = [[-0.424, -0.695], [-0.431, -0.689], [-0.429, -0.598], [-0.424, -0.575], [-0.406, -0.54], [-0.393, -0.531], [-0.371, -0.531], [-0.351, -0.553], [-0.351, -0.586], [-0.355, -0.6], [-0.391, -0.651], [-0.391, -0.658], [-0.404, -0.673], [-0.413, -0.693]];
+const FLAME_DROP2 = [[-0.393, -0.8], [-0.398, -0.796], [-0.402, -0.744], [-0.398, -0.742], [-0.398, -0.731], [-0.391, -0.722], [-0.373, -0.718], [-0.36, -0.727], [-0.353, -0.747], [-0.36, -0.765], [-0.373, -0.78], [-0.378, -0.796], [-0.382, -0.8]];
+const FLAME_PUPIL = [0.063, 0.095, 0.065];
 
 // One traced point -> screen, with flicker: points above the center sway and stretch (wilder when flaring).
 function flamePt(f, x0, y0) {
@@ -237,10 +232,10 @@ function flamePt(f, x0, y0) {
   return [f.cx + f.S * (f.dir * x0 + sway + f.lean * up), f.cy + f.S * y0 * f.sy];
 }
 
-// Fill one traced shape; grow > 1 enlarges it around the core (used for the core's outline).
-function fillFlame(f, pts, grow, color) {
+// Fill one traced shape of the flame.
+function fillFlame(f, pts, color) {
   g.fillStyle = color; g.beginPath();
-  for (const [x, y] of pts) g.lineTo(...flamePt(f, 0.06 + (x - 0.06) * grow, 0.06 + (y - 0.06) * grow));
+  for (const [x, y] of pts) g.lineTo(...flamePt(f, x, y));
   g.closePath(); g.fill();
 }
 
