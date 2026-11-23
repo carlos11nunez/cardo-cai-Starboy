@@ -509,7 +509,7 @@ void drawFrame(uint32_t now) {
   if (mood == SPIRAL) {  // twinkling star accents (spin along when hypnotizing)
     for (int k = 0; k < 4; k++)
       drawEyeStar(SPIRAL_STARS[k][0], SPIRAL_STARS[k][1], SPIRAL_STARS[k][2] * (0.6f + 0.4f * sinf(t * 3 + k * 2)), t * 0.4f + spinPh * 0.3f + k,
-                  gfx->color565(255, 235, 140));
+                  WHITE);  // plain white, no stripes
   }
   drawEye(233 - gap - mh + ox + sx + bx, 225 + mv + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
   if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur.rx * faceScale, cur.ry * faceScale, t);

@@ -322,7 +322,7 @@ function drawFrame(now) {
   const gap = 106 * faceScale;
   const mh = 30 * hypno, mv = -40 * hypno + 8 * hypno * Math.sin(t * 2.2); // hypnotizing: eyes spread, rise and hover
   if (mood === SPIRAL) SPIRAL_STARS.forEach(([x, y, r], k) => // twinkling star accents (spin along when hypnotizing)
-    drawEyeStar(x, y, r * (0.6 + 0.4 * Math.sin(t * 3 + k * 2)), t * 0.4 + spinPh * 0.3 + k, 'rgb(255,235,140)'));
+    drawEyeStar(x, y, r * (0.6 + 0.4 * Math.sin(t * 3 + k * 2)), t * 0.4 + spinPh * 0.3 + k, '#fff'));
   drawEye(233 - gap - mh + ox + sx + bx, 225 + mv + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
   if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur[0] * faceScale, cur[1] * faceScale, t);
   drawEye(233 + gap + mh + ox + sx + bx, 225 + mv + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
