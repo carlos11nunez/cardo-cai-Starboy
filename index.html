@@ -76,9 +76,10 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 4000;
 const A_NONE = -1, A_EYE_ROLL = 0, A_SQUINT = 1, A_SURPRISE = 2, A_SCAN = 3,
-      A_SHY = 4, A_LEAN = 5, A_DOUBLE_TAKE = 6, A_INSPECT = 7, A_DIZZY = 8;
-const ANIM_DUR = [1400, 2000, 1000, 2600, 1800, 1600, 1800, 2200, 0]; // ms; dizzy reuses the shake effect
-let animLean = 0;
+      A_SHY = 4, A_LEAN = 5, A_DOUBLE_TAKE = 6, A_INSPECT = 7, A_DIZZY = 8,
+      A_TUG = 9, A_WATCH_DROP = 10, A_SWOON = 11, A_PEEK = 12; // the last four are heart-eyes only
+const ANIM_DUR = [1400, 2000, 1000, 2600, 1800, 1600, 1800, 2200, 0, 1800, 1900, 2200, 1500]; // ms; dizzy reuses the shake effect
+let animLean = 0, animP = 1; // animP: progress of the current animation 0..1
 // Star mode shake: eyes shrink and ricochet off the round display edge
 const BOUNCE_MS = 3500, BOUNCE_SPEED = 1100, BOUNCE_SCALE = 0.8, BOUNCE_JITTER = 0.5;
 let bx = 0, by = 0, bvx = 0, bvy = 0, faceScale = 1, bounceUntil = 0, lastFrame = 0;
@@ -156,11 +157,13 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   if (mood === HEART) { // hearts.svg: beat (lub-dub) only when love-struck; the left one oozes and drips, the right one has Cupid's arrow stuck in it
     const d = left ? HEART_L : HEART_R, h = left ? HEART_L_HDR : HEART_R_HDR;
     const beat = 0.5 - 0.5 * Math.cos((beatPh % 1) * 2 * Math.PI); // love-struck: hearts swell bigger and smaller, smoothly
-    const sc = cry * k / h[3] * (1 + 0.18 * love * beat), sqz = 1 - 0.85 * blink;
-    const rot = (headTilt + love * 7 * Math.sin(t * 3 + (left ? 0 : 1))) * Math.PI / 180, cr = Math.cos(rot), sr = Math.sin(rot);
+    const swoon = anim === A_SWOON ? Math.sin(Math.PI * animP) : 0; // swoon: one dreamy swell and sway
+    const sc = cry * k / h[3] * (1 + 0.18 * love * beat + 0.12 * swoon), sqz = 1 - 0.85 * blink;
+    const rot = (headTilt + (love * 7 + swoon * 6) * Math.sin(t * 3 + (left ? 0 : 1))) * Math.PI / 180, cr = Math.cos(rot), sr = Math.sin(rot);
     const sag = 0.06 + 0.06 * Math.sin(t * 1.2 + (left ? 0 : 1.5)) + 0.3 * love; // below the melt line the body stretches down
     const tq = t - loveStart / 1000; // seconds since the last hit
-    const qa = (loveStart > 0 ? 0.35 * Math.exp(-3 * tq) * Math.sin(45 * tq) : 0) + 0.04 * love * beat; // arrow: wobbles after a hit, twitches with the racing heart
+    const qa = (loveStart > 0 ? 0.35 * Math.exp(-3 * tq) * Math.sin(45 * tq) : 0) + 0.04 * love * beat // arrow: wobbles after a hit, twitches with the racing heart
+      + (anim === A_TUG && animP > 0.3 ? 0.16 * Math.sin(t * 32) * Math.sin(Math.PI * (animP - 0.3) / 0.7) : 0); // tug: wiggles it
     const cq = Math.cos(qa), sq2 = Math.sin(qa);
     const q = (dropPh + (left ? 0 : 0.5)) % 1; // drop: swells at the tip, then falls away and shrinks
     const grow = q < 0.25 ? q / 0.25 : (q > 0.85 ? (1 - q) / 0.15 : 1), fall = q > 0.25 ? ((q - 0.25) / 0.75) ** 2 * 900 : 0;
@@ -405,12 +408,14 @@ function loop(now) {
   if (now >= nextAnim) {
     nextAnim = now + (mood === SPIRAL || mood === HEART ? ANIM_EVERY_MS / 2 : ANIM_EVERY_MS); // spiral + heart eyes are extra curious
     if (!dizzy && !touching && mood !== LOWBAT && now >= bounceUntil && now >= angryUntil) {
-      anim = Math.floor(Math.random() * ANIM_DUR.length); animStart = now;
+      anim = mood === HEART && Math.random() < 0.6 ? A_TUG + Math.floor(Math.random() * 4) : Math.floor(Math.random() * A_TUG); animStart = now; // hearts mostly do their own bits
+      if (anim === A_WATCH_DROP) dropPh = Math.floor(dropPh); // a fresh drop starts forming so it can watch it fall
       if (anim === A_DIZZY) { if (mood === FIRE) flareUntil = now + FLARE_MS / 2; else if (mood === SPIRAL) hypnoUntil = now + HYPNO_MS; else if (mood === HEART) { loveUntil = now + LOVE_MS; loveStart = now; } else dizzyUntil = now + 1800; anim = A_NONE; }
     }
   }
   const p = anim === A_NONE ? 1 : (now - animStart) / ANIM_DUR[anim];
   if (p >= 1) anim = A_NONE;
+  animP = p;
   const env = anim === A_NONE ? 0 : Math.sin(Math.PI * p);
   animBlinkL = animBlinkR = animLean = 0;
   const side = Math.floor(animStart) % 2 ? 1 : -1, take = p > 0.45 ? Math.sin(Math.PI * (p - 0.45) / 0.55) : 0; // random side; double-take snap
@@ -423,6 +428,9 @@ function loop(now) {
     case A_LEAN: animLean = Math.sin(p * 2 * Math.PI); break;
     case A_DOUBLE_TAKE: animGaze = true; agx = side * (p < 0.3 ? 0.5 : p < 0.45 ? 0 : 0.95); break; // glance, look away, snap back
     case A_INSPECT: animGaze = true; agx = side * 0.35 + Math.sin(p * 6 * Math.PI) * 0.12; agy = 0.6; animLean = side * 0.35 * env; break; // lean in and study something
+    case A_TUG: animGaze = true; agx = 0.9; agy = -0.85; break; // stare at the arrow, then try to wiggle it out
+    case A_WATCH_DROP: animGaze = true; agx = -0.2; agy = Math.min(1, -0.1 + 1.4 * p); break; // watch a drop form and fall
+    case A_SWOON: animGaze = true; agx = 0.35 * Math.sin(p * 2 * Math.PI); agy = -0.75; break; // dreamy sigh, eyes drift up
   }
 
   const tg = [...LOOKS[mood]];
@@ -469,6 +477,7 @@ function loop(now) {
   if (mood === SPIRAL && hypno > 0.05) { gx = gy = 0; crossTarget = 0; } // hypnotizing: stare straight at you
   if (now < bounceUntil) { const sp = Math.hypot(bvx, bvy); gx = bvx / sp * 0.8; gy = bvy / sp * 0.8; crossTarget = 0; } // look where they fly
   let gRX = gx, gRY = gy;
+  if (anim === A_PEEK) { gx = 0.8; gRX = -0.8; gy = gRY = 0.1; } // each heart peeks over at the other
   if (dizzy) { gx = dzX; gy = dzY; gRX = -dzX; gRY = dzY; } // mirrored spin
   const kl = dizzy ? 0.25 : 0.22, kr = dizzy ? 0.25 : 0.11;
   lookLX = lerp(lookLX, gx, kl); lookLY = lerp(lookLY, gy, kl);

@@ -178,10 +178,12 @@ float stretchX = 0, stretchY = 0, prevLX = 0, prevLY = 0;  // squash & stretch o
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 #define ANIM_EVERY_MS 4000
 enum Anim { A_NONE = -1, A_EYE_ROLL, A_SQUINT, A_SURPRISE, A_SCAN,
-            A_SHY, A_LEAN, A_DOUBLE_TAKE, A_INSPECT, A_DIZZY, ANIM_COUNT };
-const uint16_t ANIM_DUR[ANIM_COUNT] = {1400, 2000, 1000, 2600, 1800, 1600, 1800, 2200, 0};  // ms; dizzy reuses the shake effect
+            A_SHY, A_LEAN, A_DOUBLE_TAKE, A_INSPECT, A_DIZZY,
+            A_TUG, A_WATCH_DROP, A_SWOON, A_PEEK, ANIM_COUNT };  // the last four are heart-eyes only
+const uint16_t ANIM_DUR[ANIM_COUNT] = {1400, 2000, 1000, 2600, 1800, 1600, 1800, 2200, 0, 1800, 1900, 2200, 1500};  // ms; dizzy reuses the shake effect
 float animLean = 0;  // lean -1..1
 int anim = A_NONE;
+float animP = 1;  // progress of the current animation 0..1
 uint32_t animStart = 0, nextAnim = ANIM_EVERY_MS;
 // Star mode shake: eyes shrink and ricochet off the round display edge
 #define BOUNCE_MS 3500
@@ -287,11 +289,13 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   if (mood == HEART) {  // hearts.svg: beat (lub-dub) only when love-struck; the left one oozes and drips, the right one has Cupid's arrow stuck in it
     const int16_t *d = left ? HEART_L : HEART_R, *h = left ? HEART_L_HDR : HEART_R_HDR;
     float beat = 0.5f - 0.5f * cosf(fmodf(beatPh, 1) * TWO_PI);  // love-struck: hearts swell bigger and smaller, smoothly
-    float sc = cur.ry * k / h[3] * (1 + 0.18f * love * beat), sqz = 1 - 0.85f * blink;
-    float rot = (headTilt + love * 7 * sinf(t * 3 + (left ? 0 : 1))) * DEG_TO_RAD, cr = cosf(rot), sr = sinf(rot);
+    float swoon = anim == A_SWOON ? sinf(PI * animP) : 0;  // swoon: one dreamy swell and sway
+    float sc = cur.ry * k / h[3] * (1 + 0.18f * love * beat + 0.12f * swoon), sqz = 1 - 0.85f * blink;
+    float rot = (headTilt + (love * 7 + swoon * 6) * sinf(t * 3 + (left ? 0 : 1))) * DEG_TO_RAD, cr = cosf(rot), sr = sinf(rot);
     float sag = 0.06f + 0.06f * sinf(t * 1.2f + (left ? 0 : 1.5f)) + 0.3f * love;  // below the melt line the body stretches down
     float tq = t - loveStart / 1000.0f;  // seconds since the last hit
-    float qa = (loveStart > 0 ? 0.35f * expf(-3 * tq) * sinf(45 * tq) : 0) + 0.04f * love * beat;  // arrow: wobbles after a hit, twitches with the racing heart
+    float qa = (loveStart > 0 ? 0.35f * expf(-3 * tq) * sinf(45 * tq) : 0) + 0.04f * love * beat  // arrow: wobbles after a hit, twitches with the racing heart
+             + (anim == A_TUG && animP > 0.3f ? 0.16f * sinf(t * 32) * sinf(PI * (animP - 0.3f) / 0.7f) : 0);  // tug: wiggles it
     float cq = cosf(qa), sq2 = sinf(qa);
     float q = fmodf(dropPh + (left ? 0 : 0.5f), 1);  // drop: swells at the tip, then falls away and shrinks
     float grow = q < 0.25f ? q / 0.25f : (q > 0.85f ? (1 - q) / 0.15f : 1), fall = q > 0.25f ? sq((q - 0.25f) / 0.75f) * 900 : 0;
@@ -709,12 +713,14 @@ void loop() {
   if (now >= nextAnim) {
     nextAnim = now + (mood == SPIRAL || mood == HEART ? ANIM_EVERY_MS / 2 : ANIM_EVERY_MS);  // spiral + heart eyes are extra curious
     if (!dizzy && !touching && mood != LOWBAT && now >= bounceUntil && now >= angryUntil) {
-      anim = random(ANIM_COUNT); animStart = now;
+      anim = mood == HEART && random(100) < 60 ? A_TUG + random(4) : random(A_TUG); animStart = now;  // hearts mostly do their own bits
+      if (anim == A_WATCH_DROP) dropPh = floorf(dropPh);  // a fresh drop starts forming so it can watch it fall
       if (anim == A_DIZZY) { if (mood == FIRE) flareUntil = now + FLARE_MS / 2; else if (mood == SPIRAL) hypnoUntil = now + HYPNO_MS; else if (mood == HEART) { loveUntil = now + LOVE_MS; loveStart = now; } else dizzyUntil = now + 1800; anim = A_NONE; }
     }
   }
   float p = anim == A_NONE ? 1 : (now - animStart) / (float)ANIM_DUR[anim];
   if (p >= 1) anim = A_NONE;
+  animP = p;
   float env = anim == A_NONE ? 0 : sinf(PI * p);  // 0 -> 1 -> 0 over the animation
   animBlinkL = animBlinkR = animLean = 0;
   float side = animStart % 2 ? 1 : -1, take = p > 0.45f ? sinf(PI * (p - 0.45f) / 0.55f) : 0;  // random side; double-take snap
@@ -728,6 +734,9 @@ void loop() {
     case A_LEAN: animLean = sinf(p * TWO_PI); break;                     // tilt and slide side to side
     case A_DOUBLE_TAKE: animGaze = true; agx = side * (p < 0.3f ? 0.5f : p < 0.45f ? 0 : 0.95f); break;  // glance, look away, snap back
     case A_INSPECT: animGaze = true; agx = side * 0.35f + sinf(p * 3 * TWO_PI) * 0.12f; agy = 0.6f; animLean = side * 0.35f * env; break;  // lean in and study something
+    case A_TUG: animGaze = true; agx = 0.9f; agy = -0.85f; break;                          // stare at the arrow, then try to wiggle it out
+    case A_WATCH_DROP: animGaze = true; agx = -0.2f; agy = min(1.0f, -0.1f + 1.4f * p); break;  // watch a drop form and fall
+    case A_SWOON: animGaze = true; agx = 0.35f * sinf(p * TWO_PI); agy = -0.75f; break;    // dreamy sigh, eyes drift up
     default: break;
   }
 
@@ -793,6 +802,7 @@ void loop() {
     gx = bvx / sp * 0.8f; gy = bvy / sp * 0.8f; crossTarget = 0;
   }
   float gRX = gx, gRY = gy;
+  if (anim == A_PEEK) { gx = 0.8f; gRX = -0.8f; gy = gRY = 0.1f; }  // each heart peeks over at the other
   if (dizzy) { gx = dzX; gy = dzY; gRX = -dzX; gRY = dzY; }  // mirrored spin
   float kl = dizzy ? 0.25f : 0.22f, kr = dizzy ? 0.25f : 0.11f;  // lazy right eye trails behind (goofy)
   lookLX = lerpf(lookLX, gx, kl); lookLY = lerpf(lookLY, gy, kl);
