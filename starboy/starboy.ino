@@ -63,6 +63,8 @@ const uint8_t BLUE_EYE[3]   = {0x17, 0x39, 0xD1};
 const uint8_t ORANGE_EYE[3] = {0xFF, 0x9A, 0x1F};
 const uint8_t CREAM[3]      = {255, 231, 176};   // googly pupils
 const uint8_t SWEAT[3]      = {80, 220, 190};    // worried sweat drop
+#define SWEAT_EVERY_S 8.0f   // worried: a sweat drop every 8 s...
+#define SWEAT_TIME_S 2.5f    // ...that takes 2.5 s to droop down and drip off
 const float PUPIL_SHADE = 0.4f;
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(LCD_CS, LCD_SCLK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
@@ -305,13 +307,21 @@ void drawDizzyStars(float t) {
   }
 }
 
-// worried: a big sweat drop on the lower-left of the left eye, slowly sinking and repeating every 4 s
-void drawSweat(float x, float y, float t) {
-  float q = fmodf(t, 4.0f) / 4.0f, r = 16 * faceScale;
-  y += 25 + q * 22;
+// worried: every SWEAT_EVERY_S a big sweat drop pops in at the upper-left of the left eye,
+// droops down around the outside of the eye (speeding up and stretching), then drips off
+void drawSweat(float cx, float cy, float rx, float ry, float t) {
+  float q = fmodf(t, SWEAT_EVERY_S) / SWEAT_TIME_S;
+  if (q >= 1) return;
+  float r = 20 * faceScale;
+  if (q < 0.15f) r *= q / 0.15f;               // pops in
+  else if (q > 0.85f) r *= (1 - q) / 0.15f;    // drips off
+  float s = q * q;                             // speeds up like gravity
+  float a = (200 - 60 * s) * DEG_TO_RAD;       // upper-left -> lower-left, outside the eye
+  float x = cx + (rx + 20 * faceScale + 6) * cosf(a), y = cy + (ry + 6) * sinf(a);
+  float tip = 2.2f + 1.2f * s;                 // stretches as it droops
   uint16_t c = gfx->color565(SWEAT[0], SWEAT[1], SWEAT[2]);
   gfx->fillCircle(x, y, r, c);
-  gfx->fillTriangle(x - r * 0.97f, y - r * 0.25f, x + r * 0.97f, y - r * 0.25f, x + r * 0.15f, y - r * 2.7f, c);
+  gfx->fillTriangle(x - r * 0.97f, y - r * 0.25f, x + r * 0.97f, y - r * 0.25f, x + r * 0.15f, y - r * tip, c);
 }
 
 void drawBattery(int cx, int cy, int pct, bool showText) {
@@ -352,7 +362,7 @@ void drawFrame(uint32_t now) {
   oy += animHop;
   float gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, max(blink, animBlinkL), t);
-  if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx - cur.rx * faceScale + 10, 225 + oy + sy + by, t);  // overlaps the eye's edge
+  if (mood == SLAB && blink < 0.5f) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur.rx * faceScale, cur.ry * faceScale, t);
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, max(blink, animBlinkR), t);
   drawDizzyStars(t);
 

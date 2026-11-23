@@ -35,6 +35,7 @@ const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','SL
 const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
+const SWEAT_EVERY_S = 8, SWEAT_TIME_S = 2.5; // worried: a sweat drop every 8 s that takes 2.5 s to drip
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [88,112,12,1.08,18,72, 0,  0,0.00,0.00,1.0],  [80,100,6,1.05,28,54, 0,  0,0.00,0.00,1.0],
@@ -185,11 +186,16 @@ function drawDizzyStars(t) {
   }
 }
 
-// worried: a big sweat drop on the lower-left of the left eye, slowly sinking and repeating every 4 s
-function drawSweat(x, y, t) {
-  const q = (t % 4) / 4, r = 16 * faceScale; y += 25 + q * 22;
+// worried: every SWEAT_EVERY_S a big sweat drop droops down around the outside of the left eye
+function drawSweat(cx, cy, rx, ry, t) {
+  const q = (t % SWEAT_EVERY_S) / SWEAT_TIME_S;
+  if (q >= 1) return;
+  let r = 20 * faceScale;
+  if (q < 0.15) r *= q / 0.15; else if (q > 0.85) r *= (1 - q) / 0.15; // pop in, drip off
+  const s = q * q, a = (200 - 60 * s) * Math.PI / 180, tip = 2.2 + 1.2 * s;
+  const x = cx + (rx + 20 * faceScale + 6) * Math.cos(a), y = cy + (ry + 6) * Math.sin(a);
   g.fillStyle = `rgb(${SWEAT})`; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-  g.beginPath(); g.moveTo(x - r * 0.97, y - r * 0.25); g.lineTo(x + r * 0.97, y - r * 0.25); g.lineTo(x + r * 0.15, y - r * 2.7); g.fill();
+  g.beginPath(); g.moveTo(x - r * 0.97, y - r * 0.25); g.lineTo(x + r * 0.97, y - r * 0.25); g.lineTo(x + r * 0.15, y - r * tip); g.fill();
 }
 
 function drawBattery(cx, cy, pct, showText) {
@@ -219,7 +225,7 @@ function drawFrame(now) {
   headTilt += idleTilt;
   const gap = 106 * faceScale;
   drawEye(233 - gap + ox + sx + bx, 225 + oy + sy + by, true, lookLX, lookLY, Math.max(blink, animBlinkL), t);
-  if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx - cur[0] * faceScale + 10, 225 + oy + sy + by, t); // overlaps the eye's edge
+  if (mood === SLAB && blink < 0.5) drawSweat(233 - gap + ox + sx + bx, 225 + oy + sy + by, cur[0] * faceScale, cur[1] * faceScale, t);
   drawEye(233 + gap + ox + sx + bx, 225 + oy + RIGHT_EYE_DROP + sy + by, false, lookRX, lookRY, Math.max(blink, animBlinkR), t);
   drawDizzyStars(t);
 
