@@ -35,6 +35,7 @@ const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','FI
 const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE, HEART];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
+const HEART_PINK = [255, 110, 180]; // heart eyes (pupil = darker shade, shine = paler)
 const FIRE_L_OUT = [0x17, 0x39, 0xD1], FIRE_L_CORE = [110, 180, 255], FIRE_R_OUT = [255, 130, 25], FIRE_R_CORE = [255, 205, 60]; // fire: body + lighter core
 const FIRE_L_PUPIL = [215, 240, 255], FIRE_R_PUPIL = [255, 245, 205], FLARE_MS = 2500; // pale pupils; shake flare length
 let flareUntil = 0, flare = 0;
@@ -130,14 +131,15 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const ry = cry * k * (1 + WOBBLE * Math.sin(t * 1.7 + ph + 1)) * (1 + stretchY - 0.5 * stretchX) * (1 - 0.2 * blink); // blink squashes
   const prx = cprx * k, pry = cpry * k;
   const tilt = (left ? ctilt + 2 : -ctilt - 1) + headTilt;
-  const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY || mood === HEART; // blue + orange styles
+  const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY; // blue + orange styles
   const col = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
   if (mood === HEART) { // heart eyes: double-thump heartbeat, shine; shaken = happy hops and wiggles
     const s = rx * 0.9 * (1 + heartBeat(t, joy)) * (1 + 0.15 * joy), ph = left ? 0 : Math.PI;
-    cx += lx * 12;
-    cy += ly * 10 - Math.abs(Math.sin(t * 12 + (left ? 0 : 0.6))) * 22 * joy; // happy hops
+    cx += lx * 6;
+    cy += ly * 5 - Math.abs(Math.sin(t * 12 + (left ? 0 : 0.6))) * 22 * joy; // happy hops
     const rot = Math.sin(t * 9 + ph) * 0.35 * joy; // happy wiggle, eyes in opposite directions
-    drawHeartShape(cx, cy, s, rot, 1 - 0.85 * blink, `rgb(${col.map(c => c * b)})`, `rgb(${col.map(c => (c + 510) / 3 * b)})`);
+    const hp = HEART_PINK;
+    drawHeartShape(cx, cy, s, rot, 1 - 0.85 * blink, `rgb(${hp.map(c => c * b)})`, `rgb(${hp.map(c => (c + 510) / 3 * b)})`, lx, ly, `rgb(${hp.map(c => c * b * PUPIL_SHADE)})`);
     return;
   }
   if (mood === FIRE) { // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
@@ -235,13 +237,17 @@ function heartBeat(t, joyAmt) {
 }
 
 // Heart of half-width ~s: two round lobes + a point, rotated by rot (radians), squashed by sy (blink).
-function drawHeartShape(cx, cy, s, rot, sy, color, shine) {
+// The pupil sits in the heart's center and shifts a little with the gaze (lx, ly).
+function drawHeartShape(cx, cy, s, rot, sy, color, shine, lx, ly, pupil) {
   const cs = Math.cos(rot), sn = Math.sin(rot), P = (x, y) => { y *= sy; return [cx + x * cs - y * sn, cy + x * sn + y * cs]; };
   const dot = ([x, y], r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
   g.fillStyle = color;
   dot(P(-0.5 * s, -0.25 * s), 0.55 * s * sy); dot(P(0.5 * s, -0.25 * s), 0.55 * s * sy);
-  g.beginPath(); g.moveTo(...P(-1.03 * s, -0.05 * s)); g.lineTo(...P(1.03 * s, -0.05 * s)); g.lineTo(...P(0, 1.1 * s)); g.fill();
-  if (sy > 0.5) { g.fillStyle = shine; dot(P(-0.62 * s, -0.42 * s), 0.14 * s); }
+  g.beginPath(); g.moveTo(...P(-1.0 * s, -0.1 * s)); g.lineTo(...P(1.0 * s, -0.1 * s)); g.lineTo(...P(0, 1.1 * s)); g.fill(); // corners tucked inside the lobes
+  if (sy > 0.5) {
+    g.fillStyle = pupil; dot(P(lx * 0.15 * s, (0.12 + ly * 0.12) * s), 0.24 * s);
+    g.fillStyle = shine; dot(P(-0.62 * s, -0.42 * s), 0.14 * s);
+  }
 }
 
 // One cartoon flame (like a flame mascot): plump round body, a big tip that curls

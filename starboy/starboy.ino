@@ -63,6 +63,7 @@ const uint8_t BLUE_EYE[3]   = {0x17, 0x39, 0xD1};
 const uint8_t ORANGE_EYE[3] = {0xFF, 0x9A, 0x1F};
 const uint8_t CREAM[3]      = {255, 231, 176};   // googly pupils
 const uint8_t SWEAT[3]      = {80, 220, 190};    // worried sweat drop
+const uint8_t HEART_PINK[3] = {255, 110, 180};   // heart eyes (pupil = darker shade, shine = paler)
 // Fire style: blue flame on the left, orange-red flame on the right, each with a brighter core
 const uint8_t FIRE_L_OUT[3]  = {0x17, 0x39, 0xD1};  // flame body
 const uint8_t FIRE_L_CORE[3] = {110, 180, 255};     // lighter inner core
@@ -248,16 +249,18 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float prx = cur.prx * k, pry = cur.pry * k;
   float tilt = (left ? cur.tilt + 2 : -cur.tilt - 1) + headTilt;  // slightly uneven on purpose
   float b = cur.bright, pb = b * PUPIL_SHADE;
-  bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY || mood == HEART;  // blue + orange styles
+  bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY;  // blue + orange styles
   const uint8_t *e = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
   if (mood == HEART) {  // heart eyes: double-thump heartbeat, shine; shaken = happy hops and wiggles
     float s = rx * 0.9f * (1 + heartBeat(t, joy)) * (1 + 0.15f * joy);
     float ph = left ? 0.0f : PI;
-    cx += lx * 12;
-    cy += ly * 10 - fabsf(sinf(t * 12 + (left ? 0.0f : 0.6f))) * 22 * joy;  // happy hops
+    cx += lx * 6;
+    cy += ly * 5 - fabsf(sinf(t * 12 + (left ? 0.0f : 0.6f))) * 22 * joy;  // happy hops
     float rot = sinf(t * 9 + ph) * 0.35f * joy;                              // happy wiggle, eyes in opposite directions
-    uint16_t hc = gfx->color565((e[0] + 510) / 3 * b, (e[1] + 510) / 3 * b, (e[2] + 510) / 3 * b);  // pale shine
-    drawHeartShape(cx, cy, s, rot, 1 - 0.85f * blink, gfx->color565(e[0] * b, e[1] * b, e[2] * b), hc);
+    const uint8_t *hp = HEART_PINK;
+    uint16_t hc = gfx->color565((hp[0] + 510) / 3 * b, (hp[1] + 510) / 3 * b, (hp[2] + 510) / 3 * b);  // pale shine
+    uint16_t pc = gfx->color565(hp[0] * pb, hp[1] * pb, hp[2] * pb);                                   // darker pupil
+    drawHeartShape(cx, cy, s, rot, 1 - 0.85f * blink, gfx->color565(hp[0] * b, hp[1] * b, hp[2] * b), hc, lx, ly, pc);
     return;
   }
   if (mood == FIRE) {  // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
@@ -367,15 +370,19 @@ float heartBeat(float t, float joyAmt) {
 }
 
 // Heart of half-width ~s: two round lobes + a point, rotated by rot (radians), squashed by sy (blink).
-void drawHeartShape(float cx, float cy, float s, float rot, float sy, uint16_t c, uint16_t shine) {
+// The pupil sits in the heart's center and shifts a little with the gaze (lx, ly).
+void drawHeartShape(float cx, float cy, float s, float rot, float sy, uint16_t c, uint16_t shine, float lx, float ly, uint16_t pupil) {
   float cs = cosf(rot), sn = sinf(rot);
   auto P = [&](float x, float y, float &ox, float &oy) { y *= sy; ox = cx + x * cs - y * sn; oy = cy + x * sn + y * cs; };
   float ax, ay, bx2, by2, px, py;
   P(-0.5f * s, -0.25f * s, ax, ay); gfx->fillCircle(ax, ay, 0.55f * s * sy, c);
   P(0.5f * s, -0.25f * s, ax, ay);  gfx->fillCircle(ax, ay, 0.55f * s * sy, c);
-  P(-1.03f * s, -0.05f * s, ax, ay); P(1.03f * s, -0.05f * s, bx2, by2); P(0, 1.1f * s, px, py);
+  P(-1.0f * s, -0.1f * s, ax, ay); P(1.0f * s, -0.1f * s, bx2, by2); P(0, 1.1f * s, px, py);  // corners tucked inside the lobes
   gfx->fillTriangle(ax, ay, bx2, by2, px, py, c);
-  if (sy > 0.5f) { P(-0.62f * s, -0.42f * s, ax, ay); gfx->fillCircle(ax, ay, 0.14f * s, shine); }
+  if (sy > 0.5f) {
+    P(lx * 0.15f * s, (0.12f + ly * 0.12f) * s, ax, ay); gfx->fillCircle(ax, ay, 0.24f * s, pupil);
+    P(-0.62f * s, -0.42f * s, ax, ay); gfx->fillCircle(ax, ay, 0.14f * s, shine);
+  }
 }
 
 // One cartoon flame (like a flame mascot): plump round body, a big tip that curls
