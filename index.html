@@ -30,14 +30,16 @@
 <script>
 // Mirrors starboy.ino - keep them in sync.
 const W = 466, cv = document.getElementById('c'), g = cv.getContext('2d');
-const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, DOME=5, SLAB=6, GOOGLY=7, FIRE=8, SLEEPY=9, LOWBAT=10;
-const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','FIRE','SLEEPY','LOWBAT'];
-const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE];
+const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, DOME=5, SLAB=6, GOOGLY=7, FIRE=8, HEART=9, SLEEPY=10, LOWBAT=11;
+const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','FIRE','HEART','SLEEPY','LOWBAT'];
+const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE, HEART];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
 const FIRE_L_OUT = [0x17, 0x39, 0xD1], FIRE_L_CORE = [110, 180, 255], FIRE_R_OUT = [255, 130, 25], FIRE_R_CORE = [255, 205, 60]; // fire: body + lighter core
 const FIRE_L_PUPIL = [215, 240, 255], FIRE_R_PUPIL = [255, 245, 205], FLARE_MS = 2500; // pale pupils; shake flare length
 let flareUntil = 0, flare = 0;
+const JOY_MS = 2500; // heart mode: shaking makes the hearts happy for this long
+let joyUntil = 0, joy = 0;
 const SWEAT_EVERY_S = 8, SWEAT_TIME_S = 2.5; // worried: a sweat drop every 8 s that takes 2.5 s to drip
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
@@ -48,6 +50,7 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [58, 98, 7,1.12,13,13, 8,  4,0.00,0.07,1.0],  // SLAB: tall full worried eyes, slight droop at the outer corners
   [82, 88, 0,1.04,30,26,10, 40,0.00,0.00,1.0],  // GOOGLY: big round eyes, big cream pupils sitting low
   [62,100, 0,1.00,12,12, 0,  0,0.00,0.00,1.0],  // FIRE: flickering flames (rx = width, ry = height)
+  [80, 80, 0,1.00,10,10, 0,  0,0.00,0.00,1.0],  // HEART: heart eyes with a heartbeat
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 8000;
@@ -127,8 +130,16 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const ry = cry * k * (1 + WOBBLE * Math.sin(t * 1.7 + ph + 1)) * (1 + stretchY - 0.5 * stretchX) * (1 - 0.2 * blink); // blink squashes
   const prx = cprx * k, pry = cpry * k;
   const tilt = (left ? ctilt + 2 : -ctilt - 1) + headTilt;
-  const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY; // blue + orange styles
+  const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY || mood === HEART; // blue + orange styles
   const col = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
+  if (mood === HEART) { // heart eyes: double-thump heartbeat, shine; shaken = happy hops and wiggles
+    const s = rx * 0.9 * (1 + heartBeat(t, joy)) * (1 + 0.15 * joy), ph = left ? 0 : Math.PI;
+    cx += lx * 12;
+    cy += ly * 10 - Math.abs(Math.sin(t * 12 + (left ? 0 : 0.6))) * 22 * joy; // happy hops
+    const rot = Math.sin(t * 9 + ph) * 0.35 * joy; // happy wiggle, eyes in opposite directions
+    drawHeartShape(cx, cy, s, rot, 1 - 0.85 * blink, `rgb(${col.map(c => c * b)})`, `rgb(${col.map(c => (c + 510) / 3 * b)})`);
+    return;
+  }
   if (mood === FIRE) { // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
     const R = rx * 1.15 * (1 + 0.2 * flare), H = R * 1.7 * (1 + 0.35 * flare) * (1 - 0.85 * blink), ph = left ? 0 : 1.7; // plump teardrop
     // shaken: each flame darts and bobs on its own; its tongues trail opposite the motion like real fire
@@ -217,6 +228,22 @@ function drawDizzyStars(t) {
 }
 
 // worried: every SWEAT_EVERY_S a big sweat drop droops down around the outside of the left eye
+// Heartbeat: a quick double thump ("ba-dum") every 1.2 s, faster when happy. Returns extra scale.
+function heartBeat(t, joyAmt) {
+  const q = (t * (1 + joyAmt)) % 1.2;
+  return 0.08 * Math.exp(-((q / 0.07) ** 2)) + 0.05 * Math.exp(-(((q - 0.22) / 0.07) ** 2));
+}
+
+// Heart of half-width ~s: two round lobes + a point, rotated by rot (radians), squashed by sy (blink).
+function drawHeartShape(cx, cy, s, rot, sy, color, shine) {
+  const cs = Math.cos(rot), sn = Math.sin(rot), P = (x, y) => { y *= sy; return [cx + x * cs - y * sn, cy + x * sn + y * cs]; };
+  const dot = ([x, y], r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+  g.fillStyle = color;
+  dot(P(-0.5 * s, -0.25 * s), 0.55 * s * sy); dot(P(0.5 * s, -0.25 * s), 0.55 * s * sy);
+  g.beginPath(); g.moveTo(...P(-1.03 * s, -0.05 * s)); g.lineTo(...P(1.03 * s, -0.05 * s)); g.lineTo(...P(0, 1.1 * s)); g.fill();
+  if (sy > 0.5) { g.fillStyle = shine; dot(P(-0.62 * s, -0.42 * s), 0.14 * s); }
+}
+
 // One cartoon flame (like a flame mascot): plump round body, a big tip that curls
 // to one side, a small spike on the other side, and a little detached wisp beside the tip.
 // fl = flare-up 0..1; lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left; detail = wisp
@@ -296,6 +323,7 @@ function loop(now) {
   // cartoon dizzy: pupils spin in opposite directions while the head sways; calms down over the 3 s
   let dzX = 0, dzY = 0;
   flare = now < flareUntil ? (flareUntil - now) / FLARE_MS : 0; flare = flare * flare * (3 - 2 * flare); // eases back down
+  joy = now < joyUntil ? (joyUntil - now) / JOY_MS : 0; joy = joy * joy * (3 - 2 * joy);
   shakeAmp = 0;
   if (dizzy) {
     const amp = (dizzyUntil - now) / 3000, a = now / 1000 * DIZZY_SPEED;
@@ -307,7 +335,7 @@ function loop(now) {
     nextAnim = now + ANIM_EVERY_MS;
     if (!dizzy && !touching && mood !== LOWBAT && now >= bounceUntil && now >= angryUntil) {
       anim = Math.floor(Math.random() * ANIM_DUR.length); animStart = now;
-      if (anim === A_DIZZY) { if (mood === FIRE) flareUntil = now + FLARE_MS / 2; else dizzyUntil = now + 1800; anim = A_NONE; }
+      if (anim === A_DIZZY) { if (mood === FIRE) flareUntil = now + FLARE_MS / 2; else if (mood === HEART) joyUntil = now + JOY_MS / 2; else dizzyUntil = now + 1800; anim = A_NONE; }
     }
   }
   const p = anim === A_NONE ? 1 : (now - animStart) / ANIM_DUR[anim];
@@ -386,7 +414,8 @@ window.addEventListener('pointerup', () => {
 });
 document.getElementById('shake').onclick = () => {
   const now = performance.now();
-  if (mood === FIRE) flareUntil = now + FLARE_MS; // fire mode: flames flare up instead
+  if (mood === HEART) joyUntil = now + JOY_MS; // heart mode: happy hops instead
+  else if (mood === FIRE) flareUntil = now + FLARE_MS; // fire mode: flames flare up instead
   else if (mood !== STARP) dizzyUntil = now + 3000;
   else if (now >= bounceUntil) startBounce(now); // star mode: eyes ricochet instead
 };

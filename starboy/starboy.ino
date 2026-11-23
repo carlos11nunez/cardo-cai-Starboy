@@ -71,6 +71,7 @@ const uint8_t FIRE_R_CORE[3] = {255, 205, 60};
 const uint8_t FIRE_L_PUPIL[3] = {215, 240, 255};  // pupils: pale, lighter than their flame
 const uint8_t FIRE_R_PUPIL[3] = {255, 245, 205};
 #define FLARE_MS 2500   // fire mode: shaking makes the flames flare up for this long
+#define JOY_MS 2500     // heart mode: shaking makes the hearts happy for this long
 #define SWEAT_EVERY_S 8.0f   // worried: a sweat drop every 8 s...
 #define SWEAT_TIME_S 2.5f    // ...that takes 2.5 s to droop down and drip off
 const float PUPIL_SHADE = 0.4f;
@@ -84,9 +85,9 @@ Arduino_GFX *panel = new Arduino_SH8601(bus, LCD_RST, 0, W, W);
 Arduino_Canvas *gfx = new Arduino_Canvas(W, W, panel);  // full-frame buffer (PSRAM) = no flicker
 
 // ---------- moods ----------
-enum Mood { CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE, SLEEPY, LOWBAT, MOOD_COUNT };
-const Mood TAP_CYCLE[] = { CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE };
-const int TAP_CYCLE_N = 9;
+enum Mood { CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE, HEART, SLEEPY, LOWBAT, MOOD_COUNT };
+const Mood TAP_CYCLE[] = { CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE, HEART };
+const int TAP_CYCLE_N = 10;
 
 // eye rx/ry, tilt (deg, mirrored per eye), asym (right eye scale), pupil rx/ry,
 // pupil rest offset pox (toward center) / poy (down), lid (0..1 covered), slant (outer lid lower), brightness
@@ -102,6 +103,7 @@ const Look LOOKS[MOOD_COUNT] = {
   /*SLAB    */ {58,  98,  7, 1.12f, 13, 13,  8,   4, 0.00f, 0.07f, 1.0f},   // tall full worried eyes, slight droop at the outer corners
   /*GOOGLY  */ {82,  88,  0, 1.04f, 30, 26, 10,  40, 0.00f, 0.00f, 1.0f},   // big round eyes, big cream pupils sitting low
   /*FIRE    */ {62, 100,  0, 1.00f, 12, 12,  0,   0, 0.00f, 0.00f, 1.0f},   // flickering flames (rx = width, ry = height)
+  /*HEART   */ {80,  80,  0, 1.00f, 10, 10,  0,   0, 0.00f, 0.00f, 1.0f},   // heart eyes with a heartbeat
   /*SLEEPY  */ {92,  85,  0, 1.00f, 46, 46, 20, -10, 0.50f, 0.10f, 0.8f},
   /*LOWBAT  */ {88,  80,  0, 1.00f, 40, 40, 15,  -5, 0.60f, 0.10f, 0.45f},
 };
@@ -124,6 +126,8 @@ Mood mood = CAT;
 float shakeAmp = 0, headTilt = 0;  // dizzy strength 0..1, current sway tilt
 uint32_t flareUntil = 0;
 float flare = 0;  // fire mode flare-up strength 0..1
+uint32_t joyUntil = 0;
+float joy = 0;    // heart mode happy-shake strength 0..1
 
 float lookLX = 0, lookLY = 0, lookRX = 0, lookRY = 0;  // per-eye gaze -1..1; right eye lags = goofy
 float tiltX = 0, tiltY = 0, prevTiltX = 0, prevTiltY = 0;  // from IMU
@@ -244,8 +248,18 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float prx = cur.prx * k, pry = cur.pry * k;
   float tilt = (left ? cur.tilt + 2 : -cur.tilt - 1) + headTilt;  // slightly uneven on purpose
   float b = cur.bright, pb = b * PUPIL_SHADE;
-  bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY;  // blue + orange styles
+  bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY || mood == HEART;  // blue + orange styles
   const uint8_t *e = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
+  if (mood == HEART) {  // heart eyes: double-thump heartbeat, shine; shaken = happy hops and wiggles
+    float s = rx * 0.9f * (1 + heartBeat(t, joy)) * (1 + 0.15f * joy);
+    float ph = left ? 0.0f : PI;
+    cx += lx * 12;
+    cy += ly * 10 - fabsf(sinf(t * 12 + (left ? 0.0f : 0.6f))) * 22 * joy;  // happy hops
+    float rot = sinf(t * 9 + ph) * 0.35f * joy;                              // happy wiggle, eyes in opposite directions
+    uint16_t hc = gfx->color565((e[0] + 510) / 3 * b, (e[1] + 510) / 3 * b, (e[2] + 510) / 3 * b);  // pale shine
+    drawHeartShape(cx, cy, s, rot, 1 - 0.85f * blink, gfx->color565(e[0] * b, e[1] * b, e[2] * b), hc);
+    return;
+  }
   if (mood == FIRE) {  // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
     float R = rx * 1.15f * (1 + 0.2f * flare), H = R * 1.7f * (1 + 0.35f * flare) * (1 - 0.85f * blink);  // plump teardrop
     float ph = left ? 0.0f : 1.7f;
@@ -344,6 +358,24 @@ void drawDizzyStars(float t) {
     float b = t * 3 + k * TWO_PI / STAR_COUNT, depth = (sinf(b) + 1) / 2;  // front of orbit = bigger
     drawStar(233 + 120 * cosf(b), 92 + 20 * sinf(b), (8 + 7 * depth) * fade, t * 5 + k, gfx->color565(255, 220, 60));
   }
+}
+
+// Heartbeat: a quick double thump ("ba-dum") every 1.2 s, faster when happy. Returns extra scale.
+float heartBeat(float t, float joyAmt) {
+  float q = fmodf(t * (1 + joyAmt), 1.2f);
+  return 0.08f * expf(-sq(q / 0.07f)) + 0.05f * expf(-sq((q - 0.22f) / 0.07f));
+}
+
+// Heart of half-width ~s: two round lobes + a point, rotated by rot (radians), squashed by sy (blink).
+void drawHeartShape(float cx, float cy, float s, float rot, float sy, uint16_t c, uint16_t shine) {
+  float cs = cosf(rot), sn = sinf(rot);
+  auto P = [&](float x, float y, float &ox, float &oy) { y *= sy; ox = cx + x * cs - y * sn; oy = cy + x * sn + y * cs; };
+  float ax, ay, bx2, by2, px, py;
+  P(-0.5f * s, -0.25f * s, ax, ay); gfx->fillCircle(ax, ay, 0.55f * s * sy, c);
+  P(0.5f * s, -0.25f * s, ax, ay);  gfx->fillCircle(ax, ay, 0.55f * s * sy, c);
+  P(-1.03f * s, -0.05f * s, ax, ay); P(1.03f * s, -0.05f * s, bx2, by2); P(0, 1.1f * s, px, py);
+  gfx->fillTriangle(ax, ay, bx2, by2, px, py, c);
+  if (sy > 0.5f) { P(-0.62f * s, -0.42f * s, ax, ay); gfx->fillCircle(ax, ay, 0.14f * s, shine); }
 }
 
 // One cartoon flame (like a flame mascot): plump round body, a big tip that curls
@@ -538,7 +570,8 @@ void loop() {
     tiltX = clampf(ax * TILT_X_SIGN * 2.0f, -1, 1);
     tiltY = clampf(ay * TILT_Y_SIGN * 2.0f, -1, 1);
     if (fabsf(sqrtf(ax * ax + ay * ay + az * az) - 1.0f) > 1.2f) {
-      if (mood == FIRE) flareUntil = now + FLARE_MS;  // fire mode: flames flare up instead
+      if (mood == HEART) joyUntil = now + JOY_MS;  // heart mode: happy hops instead
+      else if (mood == FIRE) flareUntil = now + FLARE_MS;  // fire mode: flames flare up instead
       else if (mood != STARP) dizzyUntil = now + 3000;
       else if (now >= bounceUntil) startBounce(now);  // star mode: eyes ricochet instead
     }
@@ -555,6 +588,8 @@ void loop() {
   float dzX = 0, dzY = 0;
   flare = now < flareUntil ? (flareUntil - now) / (float)FLARE_MS : 0;  // eases back down
   flare = flare * flare * (3 - 2 * flare);
+  joy = now < joyUntil ? (joyUntil - now) / (float)JOY_MS : 0;
+  joy = joy * joy * (3 - 2 * joy);
   shakeAmp = 0;
   if (dizzy) {
     float amp = (dizzyUntil - now) / 3000.0f, a = now / 1000.0f * DIZZY_SPEED;
@@ -568,7 +603,7 @@ void loop() {
     nextAnim = now + ANIM_EVERY_MS;
     if (!dizzy && !touching && mood != LOWBAT && now >= bounceUntil && now >= angryUntil) {
       anim = random(ANIM_COUNT); animStart = now;
-      if (anim == A_DIZZY) { if (mood == FIRE) flareUntil = now + FLARE_MS / 2; else dizzyUntil = now + 1800; anim = A_NONE; }
+      if (anim == A_DIZZY) { if (mood == FIRE) flareUntil = now + FLARE_MS / 2; else if (mood == HEART) joyUntil = now + JOY_MS / 2; else dizzyUntil = now + 1800; anim = A_NONE; }
     }
   }
   float p = anim == A_NONE ? 1 : (now - animStart) / (float)ANIM_DUR[anim];
