@@ -30,11 +30,14 @@
 <script>
 // Mirrors starboy.ino - keep them in sync.
 const W = 466, cv = document.getElementById('c'), g = cv.getContext('2d');
-const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, DOME=5, SLAB=6, GOOGLY=7, SLEEPY=8, LOWBAT=9;
-const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','SLEEPY','LOWBAT'];
-const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY];
+const CAT=0, WIDE=1, SHOCKED=2, ROUND=3, STARP=4, DOME=5, SLAB=6, GOOGLY=7, FIRE=8, SLEEPY=9, LOWBAT=10;
+const NAMES = ['CAT','WIDE','SHOCKED','ROUND','STARP','DOME','SLAB','GOOGLY','FIRE','SLEEPY','LOWBAT'];
+const TAP_CYCLE = [CAT, WIDE, SHOCKED, ROUND, STARP, DOME, SLAB, GOOGLY, FIRE];
 const LEFT_EYE = [152, 255, 152], RIGHT_EYE = [0x17, 0x39, 0xD1]; // mint, #1739d1
 const BLUE_EYE = [0x17, 0x39, 0xD1], ORANGE_EYE = [0xFF, 0x9A, 0x1F], CREAM = [255, 231, 176], SWEAT = [80, 220, 190]; // dome/slab/googly
+const FIRE_L_OUT = [0x17, 0x39, 0xD1], FIRE_L_IN = [120, 200, 255], FIRE_R_OUT = [255, 80, 20], FIRE_R_IN = [255, 200, 50]; // fire
+const FIRE_L_PUPIL = [215, 240, 255], FIRE_R_PUPIL = [255, 245, 205], FLARE_MS = 2500; // pale pupils; shake flare length
+let flareUntil = 0, flare = 0;
 const SWEAT_EVERY_S = 8, SWEAT_TIME_S = 2.5; // worried: a sweat drop every 8 s that takes 2.5 s to drip
 const PUPIL_SHADE = 0.4; // pupil = darker shade of its own eye
 const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
@@ -44,6 +47,7 @@ const LOOKS = [ // rx, ry, tilt, asym, prx, pry, pox, poy, lid, slant, bright
   [80, 90, 0,1.00,14,14,18, 20,0.00,0.00,1.0],  // DOME: round top, flat bottom, black dot pupils low
   [58, 98, 7,1.12,13,13, 8,  4,0.00,0.07,1.0],  // SLAB: tall full worried eyes, slight droop at the outer corners
   [82, 88, 0,1.04,30,26,10, 40,0.00,0.00,1.0],  // GOOGLY: big round eyes, big cream pupils sitting low
+  [62,100, 0,1.00,12,12, 0,  0,0.00,0.00,1.0],  // FIRE: flickering flames (rx = width, ry = height)
   [92, 85, 0,1.00,46,46,20,-10,0.50,0.10,0.8],  [88, 80,0,1.00,40,40,15, -5,0.60,0.10,0.45]];
 // Random animations: one every ANIM_EVERY_MS, idle look-around in between
 const ANIM_EVERY_MS = 8000;
@@ -125,6 +129,22 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const tilt = (left ? ctilt + 2 : -ctilt - 1) + headTilt;
   const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY; // blue + orange styles
   const col = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
+  if (mood === FIRE) { // flame eyes: outer flame, brighter core, black dot pupil; a blink squashes the flame down
+    const H = ry * 1.45 * (1 + 0.35 * flare) * (1 - 0.85 * blink), R = rx * 0.95 * (1 + 0.25 * flare), ph = left ? 0 : 1.7;
+    const fo = left ? FIRE_L_OUT : FIRE_R_OUT, fi = left ? FIRE_L_IN : FIRE_R_IN, fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
+    const ci = `rgb(${fi.map(c => c * b)})`;
+    flameShape(cx, cy, R, H, ph, t, flare, `rgb(${fo.map(c => c * b)})`);
+    flameShape(cx, cy + R * 0.25, R * 0.55, H * 0.6, ph + 1, t, flare, ci);
+    if (blink < 0.6) { g.fillStyle = `rgb(${fp.map(c => c * b)})`; g.beginPath(); g.arc(cx + lx * R * 0.4, cy + 0.3 * H + ly * R * 0.3, prx * (1 + 0.3 * flare), 0, Math.PI * 2); g.fill(); }
+    if (flare > 0.05) { // embers rising off the flare
+      g.fillStyle = ci;
+      for (let k = 0; k < 6; k++) {
+        const q = (t * 1.6 + k / 6) % 1, ex = cx + Math.sin(k * 2.3 + t * 4) * R * 0.7, ey = cy + 0.3 * H - H * (0.8 + q * 0.9);
+        g.beginPath(); g.arc(ex, ey, (1 - q) * 5 * flare + 1, 0, Math.PI * 2); g.fill();
+      }
+    }
+    return;
+  }
   g.fillStyle = `rgb(${col.map(c => c * b)})`; eggPath(cx, cy, rx, ry, tilt); g.fill();
 
   // pupil, clipped to the eye outline
@@ -187,6 +207,19 @@ function drawDizzyStars(t) {
 }
 
 // worried: every SWEAT_EVERY_S a big sweat drop droops down around the outside of the left eye
+// One flame: a round base plus a flickering main tongue and two side tongues.
+// fl = flare-up 0..1: faster, wilder flicker when the keychain is shaken
+function flameShape(cx, cy, R, H, ph, t, fl, color) {
+  const sp = 1 + fl;
+  const fx = (Math.sin(t * 9 * sp + ph) * (0.14 + 0.25 * fl) + Math.sin(t * 15 * sp + ph * 2) * (0.06 + 0.12 * fl)) * R;
+  const fh = 1 + (0.08 + 0.2 * fl) * Math.sin(t * 11 * sp + ph), by = cy + 0.3 * H;
+  const tri = (a, b, c) => { g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...c); g.fill(); };
+  g.fillStyle = color; g.beginPath(); g.arc(cx, by, R, 0, Math.PI * 2); g.fill();
+  tri([cx - R * 0.98, by - R * 0.2], [cx + R * 0.98, by - R * 0.2], [cx + fx, by - H * fh]);
+  tri([cx - R, by], [cx - R * 0.1, by - R * 0.6], [cx - R * 0.8 + fx * 0.6, by - H * 0.6 * (2 - fh)]);
+  tri([cx + R, by], [cx + R * 0.1, by - R * 0.6], [cx + R * 0.75 + fx * 0.6, by - H * 0.55 * fh]);
+}
+
 function drawSweat(cx, cy, rx, ry, t) {
   const q = (t % SWEAT_EVERY_S) / SWEAT_TIME_S;
   if (q >= 1) return;
@@ -244,6 +277,7 @@ function loop(now) {
   wasDizzy = dizzy; wasBouncing = bouncing;
   // cartoon dizzy: pupils spin in opposite directions while the head sways; calms down over the 3 s
   let dzX = 0, dzY = 0;
+  flare = now < flareUntil ? (flareUntil - now) / FLARE_MS : 0; flare = flare * flare * (3 - 2 * flare); // eases back down
   shakeAmp = 0;
   if (dizzy) {
     const amp = (dizzyUntil - now) / 3000, a = now / 1000 * DIZZY_SPEED;
@@ -255,7 +289,7 @@ function loop(now) {
     nextAnim = now + ANIM_EVERY_MS;
     if (!dizzy && !touching && mood !== LOWBAT && now >= bounceUntil && now >= angryUntil) {
       anim = Math.floor(Math.random() * ANIM_DUR.length); animStart = now;
-      if (anim === A_DIZZY) { dizzyUntil = now + 1800; anim = A_NONE; }
+      if (anim === A_DIZZY) { if (mood === FIRE) flareUntil = now + FLARE_MS / 2; else dizzyUntil = now + 1800; anim = A_NONE; }
     }
   }
   const p = anim === A_NONE ? 1 : (now - animStart) / ANIM_DUR[anim];
@@ -334,7 +368,8 @@ window.addEventListener('pointerup', () => {
 });
 document.getElementById('shake').onclick = () => {
   const now = performance.now();
-  if (mood !== STARP) dizzyUntil = now + 3000;
+  if (mood === FIRE) flareUntil = now + FLARE_MS; // fire mode: flames flare up instead
+  else if (mood !== STARP) dizzyUntil = now + 3000;
   else if (now >= bounceUntil) startBounce(now); // star mode: eyes ricochet instead
 };
 const bat = document.getElementById('bat');
