@@ -16,7 +16,7 @@ import(path : "onshape/std/geometry.fs", version : "2144.0");
 // ---- Board (Waveshare dimension drawing) ----
 const GLASS_D = 46.0;       // glass / board diameter
 const BOARD_STACK = 6.2;    // glass front to PCB back
-const COMP_H = 4.0;         // components behind PCB (USB-C, connectors)
+const COMP_H = 4.0;         // board's 4 mm standoffs + components behind the PCB (USB-C, connectors)
 const HOLES = [[-14.25, 11.6], [14.25, 11.6], [-16.25, -11.5], [16.25, -11.5]]; // board M2 holes, +Y = BAT side
 const FIT = 0.3;            // radial clearance
 const GLASS_PROUD = 1.0;    // glass sits this far above the plate's front face (inside the bezel)
@@ -188,19 +188,14 @@ export const starboyEnclosure = defineFeature(function(context is Context, id is
         // front pocket for glass + PCB (board drops in from the front)
         cutCyl(context, id + "pocket", shell, 0, 0, Z_PCB, Z_FRONT + 5, pocketD);
 
-        // component cavity, leaving 4 standoff posts under the board's M2 holes
-        fCylinder(context, id + "cav", { "bottomCenter" : mm(0, 0, Z_COMP), "topCenter" : mm(0, 0, Z_PCB), "radius" : pocketD / 2 * millimeter });
-        for (var i = 0; i < size(HOLES); i += 1)
-        {
-            cutCyl(context, id + ("post" ~ i), qCreatedBy(id + "cav", EntityType.BODY), HOLES[i][0], HOLES[i][1], Z_COMP - 1, Z_PCB + 1, 4.5);
-        }
-        opBoolean(context, id + "cavB", { "tools" : qCreatedBy(id + "cav", EntityType.BODY), "targets" : shell,
-                    "operationType" : BooleanOperationType.SUBTRACTION });
+        // component cavity: open all the way across. The board has its own 4 mm brass M2 standoffs
+        // ("M2.00-H4" on the Waveshare drawing) that rest right on the floor here.
+        cutCyl(context, id + "cav", shell, 0, 0, Z_COMP, Z_PCB + 0.1, pocketD);
 
         // battery bay inside the pod, open to the lid
         cutBox(context, id + "bay", shell, mm(-BAT_W / 2, -BAT_L / 2, Z_BAY - 1), mm(BAT_W / 2, BAT_L / 2, Z_FLOOR));
 
-        // M2 screw holes through floor + posts (screw in from the battery side)
+        // M2 screw holes through the floor, up into the board's standoffs (M2x5 from the battery side)
         for (var i = 0; i < size(HOLES); i += 1)
         {
             cutCyl(context, id + ("bhole" ~ i), shell, HOLES[i][0], HOLES[i][1], Z_BAY, Z_PCB, 2.4);
