@@ -341,17 +341,14 @@ void drawDizzyStars(float t) {
   }
 }
 
-// One cartoon flame (like a flame mascot): plump round body, wavy drippy bottom, a big tip that curls
+// One cartoon flame (like a flame mascot): plump round body, a big tip that curls
 // to one side, a small spike on the other side, and a little detached wisp beside the tip.
 // fl = flare-up 0..1 (faster, wilder); lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left;
-// detail = draw the drips and wisp (off for the inner core layer)
+// detail = draw the wisp (off for the inner core layer)
 void flameShape(float cx, float cy, float R, float H, float ph, float t, float fl, float lean, float dir, bool detail, uint16_t c) {
   const float TONGUE[2][4] = {{0.05f, 1.2f, 0.85f, 0.55f}, {-0.5f, 0.55f, 0.45f, 0.15f}};  // x offset, height, width, curl
   float sp = 1 + fl, by = cy + 0.3f * H;
   gfx->fillCircle(cx, by, R, c);
-  if (detail)  // wavy, drippy bottom
-    for (int i = 0; i < 4; i++)
-      gfx->fillCircle(cx + (-0.6f + 0.4f * i) * R, by + R * (0.8f + 0.05f * sinf(t * 5 * sp + ph + i)), R * 0.24f, c);
   for (int k = 0; k < 2; k++) {
     float stretch = 1 + (0.06f + 0.15f * fl) * sinf(t * 11 * sp + ph + k);
     for (int i = 1; i <= 20; i++) {

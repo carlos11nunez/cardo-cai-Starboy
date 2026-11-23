@@ -212,14 +212,13 @@ function drawDizzyStars(t) {
 }
 
 // worried: every SWEAT_EVERY_S a big sweat drop droops down around the outside of the left eye
-// One cartoon flame (like a flame mascot): plump round body, wavy drippy bottom, a big tip that curls
+// One cartoon flame (like a flame mascot): plump round body, a big tip that curls
 // to one side, a small spike on the other side, and a little detached wisp beside the tip.
-// fl = flare-up 0..1; lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left; detail = drips + wisp
+// fl = flare-up 0..1; lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left; detail = wisp
 function flameShape(cx, cy, R, H, ph, t, fl, lean, dir, detail, color) {
   const TONGUE = [[0.05, 1.2, 0.85, 0.55], [-0.5, 0.55, 0.45, 0.15]]; // x offset, height, width, curl
   const sp = 1 + fl, by = cy + 0.3 * H, dot = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
   g.fillStyle = color; dot(cx, by, R);
-  if (detail) for (let i = 0; i < 4; i++) dot(cx + (-0.6 + 0.4 * i) * R, by + R * (0.8 + 0.05 * Math.sin(t * 5 * sp + ph + i)), R * 0.24); // drippy bottom
   TONGUE.forEach(([dx, h, w, curl], k) => {
     const stretch = 1 + (0.06 + 0.15 * fl) * Math.sin(t * 11 * sp + ph + k);
     for (let i = 1; i <= 20; i++) {
