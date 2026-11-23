@@ -9,9 +9,8 @@ import(path : "onshape/std/geometry.fs", version : "2144.0");
 //   - a chubby star PLATE with a FLAT front (like the real one), thick in the middle and tapering thin
 //     toward the tips on the BACK side, so it prints face-down with no supports on the star itself
 //   - a round POD on the back that holds the electronics, closed by a round BACK LID (4x M2 screws)
-//   - a raised BEZEL "puck" ring around the display (separate part: print it glossy black / chrome)
 //   - a small LOOP TAB on the back, behind the top point, that holds the metal keyring
-// Parts: "Front shell" (plate + pod), "Back lid", "Bezel ring".
+// Parts: "Front shell" (plate + pod) and "Back lid". The display glass sits flush with the front face.
 
 // ---- Board (Waveshare dimension drawing) ----
 const GLASS_D = 46.0;       // glass / board diameter
@@ -19,7 +18,7 @@ const BOARD_STACK = 6.2;    // glass front to PCB back
 const COMP_H = 4.0;         // board's 4 mm standoffs + components behind the PCB (USB-C, connectors)
 const HOLES = [[-14.25, 11.6], [14.25, 11.6], [-16.25, -11.5], [16.25, -11.5]]; // board M2 holes, +Y = BAT side
 const FIT = 0.3;            // radial clearance
-const GLASS_PROUD = 1.0;    // glass sits this far above the plate's front face (inside the bezel)
+const GLASS_PROUD = 0.0;    // 0 = glass flush with the front face
 
 // ---- Battery bay (3.7 V 502535 LiPo, 5x25x35 mm, ~400 mAh, plus a 1 mm foam pad) ----
 const BAT_W = 27.0;
@@ -50,10 +49,6 @@ const POD_OD = 58.0;
 const LID_T = 2.0;
 const LID_SCREW_R = 25.5;   // 4 screws at 45/135/225/315 degrees
 
-// ---- Bezel puck (separate part) ----
-const BEZEL_OD = 54.0;
-const BEZEL_ID = 44.4;      // overlaps the 46 mm glass by 0.8 mm: hides its black border and holds it in
-const BEZEL_H = 2.2;
 
 // ---- Holes ----
 const USB_W = 12.5;         // fits a USB-C plug overmold
@@ -230,17 +225,6 @@ export const starboyEnclosure = defineFeature(function(context is Context, id is
             cutCyl(context, id + ("cb" ~ i), lid, x, y, -1, 1.2, 4.2);
         }
 
-        // ---- bezel puck: raised ring around the display, rounded on top ----
-        fCylinder(context, id + "bezel", { "bottomCenter" : mm(0, 0, Z_FRONT), "topCenter" : mm(0, 0, Z_FRONT + BEZEL_H), "radius" : BEZEL_OD / 2 * millimeter });
-        const bezel = qCreatedBy(id + "bezel", EntityType.BODY);
-        cutCyl(context, id + "bezelHole", bezel, 0, 0, Z_FRONT - 1, Z_FRONT + BEZEL_H + 1, BEZEL_ID);
-        try silent
-        {
-            const top = qCoincidesWithPlane(qOwnedByBody(bezel, EntityType.FACE), plane(mm(0, 0, Z_FRONT + BEZEL_H), vector(0, 0, 1)));
-            opFillet(context, id + "bezelF", { "entities" : qAdjacent(top, AdjacencyType.EDGE, EntityType.EDGE), "radius" : 1.0 * millimeter });
-        }
-
         setProperty(context, { "entities" : shell, "propertyType" : PropertyType.NAME, "value" : "Front shell" });
         setProperty(context, { "entities" : lid, "propertyType" : PropertyType.NAME, "value" : "Back lid" });
-        setProperty(context, { "entities" : bezel, "propertyType" : PropertyType.NAME, "value" : "Bezel ring" });
     });
