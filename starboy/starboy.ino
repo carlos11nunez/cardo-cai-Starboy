@@ -34,6 +34,15 @@
 // Arduino IDE's auto-generated function declarations can see it.
 // topK < 1 makes a bean/egg: the top half (in the shape's own frame) is flatter than the bottom.
 struct Ell { float cx, cy, rx, ry, deg; float topK = 1; };
+// Fire eyes: where/how to draw the traced flame (center, size in px, mirror, blink squash, flicker inputs).
+struct FlameXf { float cx, cy, S, dir, sy, ph, t, fl, lean; };
+// The custom flame drawing (left/orange flame), traced: {x, y} in flame heights, origin at the body center,
+// y down, tip curling toward -x. FLAME_DROPS: {x, y, radius, tip x, tip y}. FLAME_PUPIL: {x, y, radius}.
+const float FLAME_OUT[][2] = {{0.33f, -0.063f}, {0.336f, 0f}, {0.33f, 0.063f}, {0.312f, 0.124f}, {0.282f, 0.18f}, {0.242f, 0.229f}, {0.193f, 0.27f}, {0.137f, 0.301f}, {0.076f, 0.322f}, {0.012f, 0.33f}, {-0.053f, 0.326f}, {-0.115f, 0.31f}, {-0.173f, 0.283f}, {-0.225f, 0.245f}, {-0.268f, 0.199f}, {-0.302f, 0.145f}, {-0.325f, 0.085f}, {-0.335f, 0.023f}, {-0.333f, -0.04f}, {-0.34f, -0.2f}, {-0.211f, -0.111f}, {-0.244f, -0.289f}, {-0.278f, -0.489f}, {-0.293f, -0.671f}, {-0.133f, -0.533f}, {-0.011f, -0.411f}, {0.078f, -0.3f}, {0.133f, -0.489f}, {0.222f, -0.356f}, {0.3f, -0.222f}, {0.338f, -0.067f}};
+const float FLAME_CORE[][2] = {{0.256f, 0.02f}, {0.251f, 0.075f}, {0.234f, 0.126f}, {0.208f, 0.173f}, {0.174f, 0.212f}, {0.132f, 0.241f}, {0.086f, 0.259f}, {0.037f, 0.265f}, {-0.012f, 0.259f}, {-0.058f, 0.241f}, {-0.1f, 0.212f}, {-0.134f, 0.173f}, {-0.16f, 0.126f}, {-0.177f, 0.075f}, {-0.182f, 0.02f}, {-0.178f, -0.067f}, {-0.107f, -0.011f}, {-0.133f, -0.178f}, {-0.156f, -0.344f}, {-0.044f, -0.267f}, {0.078f, -0.133f}, {0.138f, -0.289f}, {0.211f, -0.156f}};
+const float FLAME_DROPS[2][5] = {{-0.389f, -0.589f, 0.033f, -0.418f, -0.693f}, {-0.382f, -0.756f, 0.022f, -0.391f, -0.8f}};
+const float FLAME_PUPIL[3] = {0.062f, 0.093f, 0.067f};
+
 
 // Panel IC varies by batch. If the screen stays black or looks shifted, flip this.
 #define USE_CO5300 1   // 1 = CO5300 (newer boards), 0 = SH8601
@@ -64,12 +73,15 @@ const uint8_t ORANGE_EYE[3] = {0xFF, 0x9A, 0x1F};
 const uint8_t CREAM[3]      = {255, 231, 176};   // googly pupils
 const uint8_t SWEAT[3]      = {80, 220, 190};    // worried sweat drop
 // Fire style: blue flame on the left, orange-red flame on the right, each with a brighter core
-const uint8_t FIRE_L_OUT[3]  = {0x17, 0x39, 0xD1};  // flame body
-const uint8_t FIRE_L_CORE[3] = {110, 180, 255};     // lighter inner core
-const uint8_t FIRE_R_OUT[3]  = {255, 130, 25};
-const uint8_t FIRE_R_CORE[3] = {255, 205, 60};
-const uint8_t FIRE_L_PUPIL[3] = {215, 240, 255};  // pupils: pale, lighter than their flame
-const uint8_t FIRE_R_PUPIL[3] = {255, 245, 205};
+// colors from the custom drawing: orange flame on the left, blue on the right
+const uint8_t FIRE_L_OUT[3]  = {255, 100, 0};    // flame body
+const uint8_t FIRE_L_LINE[3] = {255, 160, 20};   // thin outline around the core
+const uint8_t FIRE_L_CORE[3] = {255, 182, 64};   // lighter inner core
+const uint8_t FIRE_R_OUT[3]  = {45, 60, 255};
+const uint8_t FIRE_R_LINE[3] = {70, 110, 255};
+const uint8_t FIRE_R_CORE[3] = {140, 145, 255};
+const uint8_t FIRE_L_PUPIL[3] = {255, 225, 180};  // pupils: pale, lighter than their core
+const uint8_t FIRE_R_PUPIL[3] = {175, 190, 255};
 #define FLARE_MS 2500   // fire mode: shaking makes the flames flare up for this long
 #define SWEAT_EVERY_S 8.0f   // worried: a sweat drop every 8 s...
 #define SWEAT_TIME_S 2.5f    // ...that takes 2.5 s to droop down and drip off
@@ -246,25 +258,35 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   float b = cur.bright, pb = b * PUPIL_SHADE;
   bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY;  // blue + orange styles
   const uint8_t *e = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
-  if (mood == FIRE) {  // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
-    float R = rx * 1.15f * (1 + 0.2f * flare), H = R * 1.7f * (1 + 0.35f * flare) * (1 - 0.85f * blink);  // plump teardrop
+  if (mood == FIRE) {  // flame eyes traced from the custom drawing; right eye = mirror image; a blink squashes it
     float ph = left ? 0.0f : 1.7f;
-    // shaken: each flame darts and bobs on its own; its tongues trail opposite the motion like real fire
+    // shaken: each flame darts and bobs on its own; its tips trail opposite the motion like real fire
     cx += flare * (sinf(t * 6.5f + ph) * 16 + sinf(t * 11 + ph * 2) * 6);
     cy += flare * sinf(t * 8 + ph) * 10;
-    float trail = -flare * 0.3f * cosf(t * 6.5f + ph);
-    const uint8_t *fo = left ? FIRE_L_OUT : FIRE_R_OUT, *fi = left ? FIRE_L_CORE : FIRE_R_CORE;
-    float dir = left ? -1.0f : 1.0f;  // each flame curls outward, mirrored
-    const uint8_t *fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
-    uint16_t ci = gfx->color565(fi[0] * b, fi[1] * b, fi[2] * b);
-    flameShape(cx, cy, R, H, ph, t, flare, trail, dir, true, gfx->color565(fo[0] * b, fo[1] * b, fo[2] * b));
-    flameShape(cx - dir * R * 0.08f, cy + R * 0.22f, R * 0.62f, H * 0.68f, ph + 1, t, flare, trail, dir, false, ci);  // lighter inner core
-    if (blink < 0.6f) gfx->fillCircle(cx + lx * R * 0.35f, cy + 0.3f * H + R * 0.12f + ly * R * 0.25f, prx * 1.2f * (1 + 0.3f * flare), gfx->color565(fp[0] * b, fp[1] * b, fp[2] * b));
+    float S = rx * 3.2f * (1 + 0.25f * flare);  // flame height in px (as big as fits: top drop reaches the screen edge)
+    FlameXf f = {cx, cy + 0.17f * S, S, left ? 1.0f : -1.0f, 1 - 0.85f * blink, ph, t, flare, -flare * 0.3f * cosf(t * 6.5f + ph)};
+    const uint8_t *fo = left ? FIRE_L_OUT : FIRE_R_OUT, *fl = left ? FIRE_L_LINE : FIRE_R_LINE;
+    const uint8_t *fi = left ? FIRE_L_CORE : FIRE_R_CORE, *fp = left ? FIRE_L_PUPIL : FIRE_R_PUPIL;
+    uint16_t body = gfx->color565(fo[0] * b, fo[1] * b, fo[2] * b), core = gfx->color565(fi[0] * b, fi[1] * b, fi[2] * b);
+    fillFlame(f, FLAME_OUT, sizeof(FLAME_OUT) / sizeof(FLAME_OUT[0]), 1, body);
+    fillFlame(f, FLAME_CORE, sizeof(FLAME_CORE) / sizeof(FLAME_CORE[0]), 1.08f, gfx->color565(fl[0] * b, fl[1] * b, fl[2] * b));  // core outline
+    fillFlame(f, FLAME_CORE, sizeof(FLAME_CORE) / sizeof(FLAME_CORE[0]), 1, core);
+    for (int d = 0; d < 2; d++) {  // the two drops above the tip
+      float x, y, tx, ty, r = FLAME_DROPS[d][2] * S;
+      flamePt(f, FLAME_DROPS[d][0], FLAME_DROPS[d][1], x, y);
+      flamePt(f, FLAME_DROPS[d][3], FLAME_DROPS[d][4], tx, ty);
+      gfx->fillCircle(x, y, r, body);
+      gfx->fillTriangle(x - r, y - r * 0.2f, x + r, y - r * 0.2f, tx, ty, body);
+    }
+    if (blink < 0.6f) {
+      float x, y;
+      flamePt(f, FLAME_PUPIL[0] + lx * 0.05f * f.dir, FLAME_PUPIL[1] + ly * 0.04f, x, y);
+      gfx->fillCircle(x, y, FLAME_PUPIL[2] * S * (1 + 0.3f * flare), gfx->color565(fp[0] * b, fp[1] * b, fp[2] * b));
+    }
     if (flare > 0.05f) {  // embers rising off the flare
       for (int k = 0; k < 6; k++) {
         float q = fmodf(t * 1.6f + k / 6.0f, 1.0f);
-        float ex = cx + sinf(k * 2.3f + t * 4) * R * 0.7f, ey = cy + 0.3f * H - H * (0.8f + q * 0.9f);
-        gfx->fillCircle(ex, ey, (1 - q) * 5 * flare + 1, ci);
+        gfx->fillCircle(f.cx + sinf(k * 2.3f + t * 4) * S * 0.25f, f.cy - S * (0.5f + q * 0.6f), (1 - q) * 5 * flare + 1, core);
       }
     }
     return;
@@ -346,30 +368,34 @@ void drawDizzyStars(float t) {
   }
 }
 
-// One cartoon flame (like a flame mascot): plump round body, a big tip that curls
-// to one side, a small spike on the other side, and a little detached wisp beside the tip.
-// fl = flare-up 0..1 (faster, wilder); lean = extra sideways drift (shake trail); dir = +1 curls right, -1 left;
-// detail = draw the wisp (off for the inner core layer)
-void flameShape(float cx, float cy, float R, float H, float ph, float t, float fl, float lean, float dir, bool detail, uint16_t c) {
-  const float TONGUE[2][4] = {{0.05f, 1.2f, 0.85f, 0.55f}, {-0.5f, 0.55f, 0.45f, 0.15f}};  // x offset, height, width, curl
-  float sp = 1 + fl, by = cy + 0.3f * H;
-  gfx->fillCircle(cx, by, R, c);
-  for (int k = 0; k < 2; k++) {
-    float stretch = 1 + (0.06f + 0.15f * fl) * sinf(t * 11 * sp + ph + k);
-    for (int i = 1; i <= 20; i++) {
-      float u = i / 20.0f;
-      float sway = sinf(t * 7 * sp + ph + k * 1.3f + u * 2.5f) * R * (0.08f + 0.15f * fl) * u;
-      float x = cx + dir * (TONGUE[k][0] * R * (1 - 0.4f * u) + TONGUE[k][3] * R * u * u) + lean * R * u * u + sway;
-      float y = by - H * TONGUE[k][1] * u * stretch;
-      gfx->fillCircle(x, y, R * TONGUE[k][2] * powf(1 - u, 0.7f) + 1.5f, c);
-    }
+// One traced point -> screen, with flicker: points above the center sway and stretch (wilder when flaring).
+void flamePt(const FlameXf &f, float x0, float y0, float &ox, float &oy) {
+  float up = max(0.0f, -y0), sp = 1 + f.fl;
+  float sway = sinf(f.t * 7 * sp + f.ph + y0 * 5) * (0.035f + 0.06f * f.fl) * up;
+  if (y0 < 0) y0 *= 1 + (0.05f + 0.12f * f.fl) * sinf(f.t * 9 * sp + f.ph);
+  ox = f.cx + f.S * (f.dir * x0 + sway + f.lean * up);
+  oy = f.cy + f.S * y0 * f.sy;
+}
+
+// Scanline fill of a simple polygon (even-odd rule), up to 40 points.
+void fillPoly(const float *xs, const float *ys, int n, uint16_t c) {
+  float y0 = ys[0], y1 = ys[0];
+  for (int i = 1; i < n; i++) { y0 = min(y0, ys[i]); y1 = max(y1, ys[i]); }
+  for (int y = (int)ceilf(y0); y <= (int)y1; y++) {
+    float xi[40];
+    int k = 0;
+    for (int i = 0, j = n - 1; i < n; j = i++)
+      if ((ys[i] <= y) != (ys[j] <= y)) xi[k++] = xs[i] + (y - ys[i]) * (xs[j] - xs[i]) / (ys[j] - ys[i]);
+    for (int a = 1; a < k; a++) { float v = xi[a]; int b2 = a - 1; while (b2 >= 0 && xi[b2] > v) { xi[b2 + 1] = xi[b2]; b2--; } xi[b2 + 1] = v; }
+    for (int a = 0; a + 1 < k; a += 2) gfx->drawFastHLine(lroundf(xi[a]), y, lroundf(xi[a + 1]) - lroundf(xi[a]) + 1, c);
   }
-  if (detail) {  // little detached wisp beside the curled tip
-    float wx = cx + dir * R * 0.95f + lean * R * 0.3f + sinf(t * 5 * sp + ph) * R * 0.08f * sp;
-    float wy = by - H * (1.0f + 0.08f * sinf(t * 4 * sp + ph)), wr = R * 0.16f;
-    gfx->fillCircle(wx, wy, wr, c);
-    gfx->fillTriangle(wx - wr, wy - wr * 0.2f, wx + wr, wy - wr * 0.2f, wx + dir * wr * 0.6f, wy - wr * 3.0f, c);
-  }
+}
+
+// Fill one traced shape; grow > 1 enlarges it around the core (used for the core's outline).
+void fillFlame(const FlameXf &f, const float (*pts)[2], int n, float grow, uint16_t c) {
+  float xs[40], ys[40];
+  for (int i = 0; i < n; i++) flamePt(f, 0.06f + (pts[i][0] - 0.06f) * grow, 0.06f + (pts[i][1] - 0.06f) * grow, xs[i], ys[i]);
+  fillPoly(xs, ys, n, c);
 }
 
 // worried: every SWEAT_EVERY_S a big sweat drop pops in at the upper-left of the left eye,
