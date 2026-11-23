@@ -247,7 +247,7 @@ void drawEye(float cx, float cy, bool left, float lx, float ly, float blink, flo
   bool twoTone = mood == DOME || mood == SLAB || mood == GOOGLY;  // blue + orange styles
   const uint8_t *e = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
   if (mood == FIRE) {  // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
-    float R = rx * 0.95f * (1 + 0.2f * flare), H = R * 1.7f * (1 + 0.35f * flare) * (1 - 0.85f * blink);  // plump teardrop
+    float R = rx * 1.15f * (1 + 0.2f * flare), H = R * 1.7f * (1 + 0.35f * flare) * (1 - 0.85f * blink);  // plump teardrop
     float ph = left ? 0.0f : 1.7f;
     // shaken: each flame darts and bobs on its own; its tongues trail opposite the motion like real fire
     cx += flare * (sinf(t * 6.5f + ph) * 16 + sinf(t * 11 + ph * 2) * 6);

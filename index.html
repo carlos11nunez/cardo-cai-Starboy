@@ -130,7 +130,7 @@ function drawEye(cx, cy, left, lx, ly, blink, t) {
   const twoTone = mood === DOME || mood === SLAB || mood === GOOGLY; // blue + orange styles
   const col = twoTone ? (left ? BLUE_EYE : ORANGE_EYE) : (left ? LEFT_EYE : RIGHT_EYE);
   if (mood === FIRE) { // flame eyes: cartoon flame, lighter core, pale pupil; a blink squashes the flame down
-    const R = rx * 0.95 * (1 + 0.2 * flare), H = R * 1.7 * (1 + 0.35 * flare) * (1 - 0.85 * blink), ph = left ? 0 : 1.7; // plump teardrop
+    const R = rx * 1.15 * (1 + 0.2 * flare), H = R * 1.7 * (1 + 0.35 * flare) * (1 - 0.85 * blink), ph = left ? 0 : 1.7; // plump teardrop
     // shaken: each flame darts and bobs on its own; its tongues trail opposite the motion like real fire
     cx += flare * (Math.sin(t * 6.5 + ph) * 16 + Math.sin(t * 11 + ph * 2) * 6);
     cy += flare * Math.sin(t * 8 + ph) * 10;
